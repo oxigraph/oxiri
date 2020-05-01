@@ -1,0 +1,19 @@
+[package]
+name = "oxiri"
+version = "0.1.0"
+authors = ["Tpt <thomas@pellissier-tanon.fr>"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+keywords = ["IRI"]
+repository = "https://github.com/oxigraph/oxiri"
+description = """
+Simple and fast implementation of IRI validation and relative IRI resolution
+"""
+edition = "2018"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "lib"
+harness = false
