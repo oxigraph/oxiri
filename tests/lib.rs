@@ -1,4 +1,6 @@
 use oxiri::Iri;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[test]
 fn test_parsing() {
@@ -478,4 +480,25 @@ fn test_resolve_relative_iri() {
             ),
         }
     }
+}
+
+#[test]
+fn test_eq() {
+    let iri = Iri::parse("http://example.com").unwrap();
+    assert_eq!(iri, iri);
+    assert_eq!(iri, "http://example.com");
+    assert_eq!("http://example.com", iri);
+    assert_eq!(hash(iri), hash("http://example.com"));
+}
+
+fn hash(value: impl Hash) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[test]
+fn test_str() {
+    let iri = Iri::parse("http://example.com").unwrap();
+    assert!(iri.starts_with("http://"));
 }

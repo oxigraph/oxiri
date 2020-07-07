@@ -27,6 +27,9 @@ use std::fmt;
 use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
 use std::str::{Chars, FromStr};
+use std::borrow::{Borrow, Cow};
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
 ///
@@ -41,8 +44,8 @@ use std::str::{Chars, FromStr};
 /// let iri = base_iri.resolve("bat#foo").unwrap();
 /// assert_eq!("http://foo.com/bar/bat#foo", iri.into_inner());
 /// ```
-#[derive(Eq, PartialEq, Debug, Clone, Hash)]
-pub struct Iri<T: Deref<Target = str>> {
+#[derive(Clone, Copy)]
+pub struct Iri<T> {
     iri: T,
     positions: IriElementsPositions,
 }
@@ -116,14 +119,124 @@ impl<T: Deref<Target = str>> Iri<T> {
     }
 }
 
-impl<T: Deref<Target = str>> AsRef<T> for Iri<T> {
+impl<Lft: PartialEq<Rhs>, Rhs> PartialEq<Iri<Rhs>> for Iri<Lft> {
     #[inline]
-    fn as_ref(&self) -> &T {
-        &self.iri
+    fn eq(&self, other: &Iri<Rhs>) -> bool {
+        self.iri.eq(&other.iri)
     }
 }
 
-impl<T: Deref<Target = str> + fmt::Display> fmt::Display for Iri<T> {
+impl<T: PartialEq<str>> PartialEq<str> for Iri<T> {
+    #[inline]
+    fn eq(&self, other: &str) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<'a, T: PartialEq<&'a str>> PartialEq<&'a str> for Iri<T> {
+    #[inline]
+    fn eq(&self, other: &&'a str) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<T: PartialEq<String>> PartialEq<String> for Iri<T> {
+    #[inline]
+    fn eq(&self, other: &String) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Cow<'a, str>> for Iri<T> {
+    #[inline]
+    fn eq(&self, other: &Cow<'a, str>) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<T: PartialEq<str>> PartialEq<Iri<T>> for str {
+    #[inline]
+    fn eq(&self, other: &Iri<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<'a, T: PartialEq<&'a str>> PartialEq<Iri<T>> for &'a str {
+    #[inline]
+    fn eq(&self, other: &Iri<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<T: PartialEq<String>> PartialEq<Iri<T>> for String {
+    #[inline]
+    fn eq(&self, other: &Iri<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Iri<T>> for Cow<'a, str> {
+    #[inline]
+    fn eq(&self, other: &Iri<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<T: Eq> Eq for Iri<T> {
+}
+
+impl<T: Hash> Hash for Iri<T> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.iri.hash(state)
+    }
+}
+
+impl<T: PartialOrd> PartialOrd for Iri<T> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.iri.partial_cmp(&other.iri)
+    }
+}
+
+impl<T: Ord> Ord for Iri<T> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+       self.iri.cmp(&other.iri)
+    }
+}
+
+impl<T: Deref<Target=str>> Deref for Iri<T> {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        self.iri.deref()
+    }
+}
+
+impl<T: AsRef<str>> AsRef<str> for Iri<T> {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.iri.as_ref()
+    }
+}
+
+impl<T: Borrow<str>> Borrow<str> for Iri<T> {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.iri.borrow()
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Iri<T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.iri.fmt(f)
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Iri<T> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.iri.fmt(f)
@@ -186,7 +299,7 @@ enum IriParseErrorKind {
     InvalidPercentEncoding([Option<char>; 3]),
 }
 
-#[derive(Eq, PartialEq, Debug, Clone, Hash)]
+#[derive(Debug, Clone, Copy)]
 struct IriElementsPositions {
     scheme_end: usize,
     authority_end: usize,
