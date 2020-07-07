@@ -22,14 +22,14 @@
     unused_qualifications
 )]
 
+use std::borrow::{Borrow, Cow};
+use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
 use std::str::{Chars, FromStr};
-use std::borrow::{Borrow, Cow};
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
 ///
@@ -182,8 +182,7 @@ impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Iri<T>> for Cow<'a, str> {
     }
 }
 
-impl<T: Eq> Eq for Iri<T> {
-}
+impl<T: Eq> Eq for Iri<T> {}
 
 impl<T: Hash> Hash for Iri<T> {
     #[inline]
@@ -202,11 +201,11 @@ impl<T: PartialOrd> PartialOrd for Iri<T> {
 impl<T: Ord> Ord for Iri<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-       self.iri.cmp(&other.iri)
+        self.iri.cmp(&other.iri)
     }
 }
 
-impl<T: Deref<Target=str>> Deref for Iri<T> {
+impl<T: Deref<Target = str>> Deref for Iri<T> {
     type Target = str;
 
     #[inline]
@@ -249,6 +248,56 @@ impl FromStr for Iri<String> {
     #[inline]
     fn from_str(iri: &str) -> Result<Self, IriParseError> {
         Self::parse(iri.to_owned())
+    }
+}
+
+impl<'a> From<Iri<&'a str>> for Iri<String> {
+    #[inline]
+    fn from(iri: Iri<&'a str>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<Iri<Cow<'a, str>>> for Iri<String> {
+    #[inline]
+    fn from(iri: Iri<Cow<'a, str>>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl From<Iri<Box<str>>> for Iri<String> {
+    #[inline]
+    fn from(iri: Iri<Box<str>>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<Iri<&'a str>> for Iri<Cow<'a, str>> {
+    #[inline]
+    fn from(iri: Iri<&'a str>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
+    #[inline]
+    fn from(iri: Iri<String>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
     }
 }
 
