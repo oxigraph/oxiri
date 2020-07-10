@@ -1,6 +1,5 @@
 //! Utilities to validate and resolve IRIs following [RFC 3987](https://www.ietf.org/rfc/rfc3987).
 //!
-//! Example:
 //! ```
 //! use oxiri::Iri;
 //!
@@ -33,7 +32,6 @@ use std::str::{Chars, FromStr};
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
 ///
-/// Example:
 /// ```
 /// use oxiri::Iri;
 ///
@@ -55,7 +53,6 @@ impl<T: Deref<Target = str>> Iri<T> {
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
-    /// Example:
     /// ```
     /// use oxiri::Iri;
     ///
@@ -70,7 +67,6 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Validates and resolved a relative IRI against the current IRI
     /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
     ///
-    /// Example:
     /// ```
     /// use oxiri::Iri;
     ///
@@ -92,14 +88,13 @@ impl<T: Deref<Target = str>> Iri<T> {
     ///
     /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
     ///
-    /// Example:
     /// ```
     /// use oxiri::Iri;
     ///
     /// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
     /// let mut result = String::default();
     /// let iri = base_iri.resolve_into("bat#foo", &mut result).unwrap();
-    /// assert_eq!("http://foo.com/bar/bat#foo", result);
+    /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
         IriParser::parse(iri, Some(&self), target_buffer)?;
