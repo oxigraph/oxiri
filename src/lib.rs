@@ -9,7 +9,7 @@
 //!
 //! // Validate and resolve relative IRI
 //! let iri = base_iri.resolve("bat#foo").unwrap();
-//! assert_eq!("http://foo.com/bar/bat#foo", iri.into_inner())
+//! assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo")
 //! ```
 #![deny(
     future_incompatible,
@@ -42,7 +42,7 @@ use std::str::{Chars, FromStr};
 ///
 /// // Validate and resolve relative IRI
 /// let iri = base_iri.resolve("bat#foo").unwrap();
-/// assert_eq!("http://foo.com/bar/bat#foo", iri.into_inner());
+/// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
 /// ```
 #[derive(Clone, Copy)]
 pub struct Iri<T> {
@@ -76,7 +76,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     ///
     /// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
     /// let iri = base_iri.resolve("bat#foo").unwrap();
-    /// assert_eq!("http://foo.com/bar/bat#foo", iri.into_inner());
+    /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
@@ -116,6 +116,93 @@ impl<T: Deref<Target = str>> Iri<T> {
     #[inline]
     pub fn into_inner(self) -> T {
         self.iri
+    }
+
+    /// Returns the IRI scheme.
+    ///
+    /// Beware: the scheme case is not normalized. Use case insensitive comparisons if you look for a specific scheme.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let iri = Iri::parse("hTTp://example.com").unwrap();
+    /// assert_eq!("hTTp", iri.scheme());
+    /// ```
+    #[inline]
+    pub fn scheme(&self) -> &str {
+        &self.iri[..self.positions.scheme_end - 1]
+    }
+
+    /// Returns the IRI authority if it exists.
+    ///
+    /// Beware: the host case is not normalized. Use case insensitive comparisons if you look for a specific host.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let http = Iri::parse("http://foo:pass@example.com:80/my/path").unwrap();
+    /// assert_eq!(http.authority(), Some("foo:pass@example.com:80"));
+    ///
+    /// let mailto = Iri::parse("mailto:foo@bar.com").unwrap();
+    /// assert_eq!(mailto.authority(), None);
+    /// ```
+    #[inline]
+    pub fn authority(&self) -> Option<&str> {
+        if self.positions.scheme_end + 2 > self.positions.authority_end {
+            None
+        } else {
+            Some(&self.iri[self.positions.scheme_end + 2..self.positions.authority_end])
+        }
+    }
+
+    /// Returns the IRI path.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let http = Iri::parse("http://foo:pass@example.com:80/my/path?foo=bar").unwrap();
+    /// assert_eq!(http.path(), "/my/path");
+    ///
+    /// let mailto = Iri::parse("mailto:foo@bar.com").unwrap();
+    /// assert_eq!(mailto.path(), "foo@bar.com");
+    /// ```
+    #[inline]
+    pub fn path(&self) -> &str {
+        &self.iri[self.positions.authority_end..self.positions.path_end]
+    }
+
+    /// Returns the IRI query if it exists.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let iri = Iri::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// assert_eq!(iri.query(), Some("query=foo"));
+    /// ```
+    #[inline]
+    pub fn query(&self) -> Option<&str> {
+        if self.positions.path_end >= self.positions.query_end {
+            None
+        } else {
+            Some(&self.iri[self.positions.path_end + 1..self.positions.query_end])
+        }
+    }
+
+    /// Returns the IRI fragment if it exists.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let iri = Iri::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// assert_eq!(iri.fragment(), Some("frag"));
+    /// ```
+    #[inline]
+    pub fn fragment(&self) -> Option<&str> {
+        if self.positions.query_end >= self.iri.len() {
+            None
+        } else {
+            Some(&self.iri[self.positions.query_end + 1..])
+        }
     }
 }
 
