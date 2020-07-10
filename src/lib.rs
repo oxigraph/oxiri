@@ -640,7 +640,6 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
                 }
                 Some(c) => {
                     self.read_url_codepoint_or_echar(c)?;
-                    self.output.push(c);
                 }
             }
         }
@@ -730,7 +729,6 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
             }
             Some(c) => {
                 self.read_url_codepoint_or_echar(c)?;
-                self.output.push(c);
                 self.parse_path()
             }
         }
