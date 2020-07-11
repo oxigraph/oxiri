@@ -8,7 +8,14 @@
 //!
 //! // Validate and resolve relative IRI
 //! let iri = base_iri.resolve("bat#foo").unwrap();
-//! assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo")
+//! assert_eq!(iri.as_str(), "http://foo.com/bar/bat#foo");
+//!
+//! // Extract IRI components
+//! assert_eq!(iri.scheme(), "http");
+//! assert_eq!(iri.authority(), Some("foo.com"));
+//! assert_eq!(iri.path(), "/bar/bat");
+//! assert_eq!(iri.query(), None);
+//! assert_eq!(iri.fragment(), Some("foo"));
 //! ```
 #![deny(
     future_incompatible,
