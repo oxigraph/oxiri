@@ -390,7 +390,7 @@ impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
     }
 }
 
-/// An error raised during `Iri` validation.
+/// An error raised during [`Iri`](struct.Iri.html) validation.
 #[derive(Debug)]
 pub struct IriParseError {
     kind: IriParseErrorKind,
