@@ -390,6 +390,26 @@ impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
     }
 }
 
+impl<'a> From<&'a Iri<String>> for Iri<&'a str> {
+    #[inline]
+    fn from(iri: &'a Iri<String>) -> Self {
+        Self {
+            iri: &iri.iri,
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<&'a Iri<Cow<'a, str>>> for Iri<&'a str> {
+    #[inline]
+    fn from(iri: &'a Iri<Cow<'a, str>>) -> Self {
+        Self {
+            iri: &iri.iri,
+            positions: iri.positions,
+        }
+    }
+}
+
 /// An error raised during [`Iri`](struct.Iri.html) validation.
 #[derive(Debug)]
 pub struct IriParseError {
