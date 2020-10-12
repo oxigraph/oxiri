@@ -942,7 +942,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
 }
 
 fn is_url_code_point(c: char) -> bool {
-    match c {
+    matches!(c,
         'a'..='z'
         | 'A'..='Z'
         | '0'..='9'
@@ -983,7 +983,5 @@ fn is_url_code_point(c: char) -> bool {
         | '\u{D0000}'..='\u{DFFFD}'
         | '\u{E1000}'..='\u{EFFFD}'
         | '\u{F0000}'..='\u{FFFFD}'
-        | '\u{100000}'..='\u{10FFFD}' => true,
-        _ => false,
-    }
+        | '\u{100000}'..='\u{10FFFD}')
 }
