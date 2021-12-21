@@ -459,7 +459,7 @@ fn test_resolve_relative_iri() {
         ("/lv2.h", "file:foo", "file:/lv2.h"),
         ("/lv2.h", "file:foo", "file:/lv2.h"),
         ("///lv2.h", "file:foo", "file:///lv2.h"),
-        ("lv2.h", "file:foo", "file:/lv2.h"),
+        ("lv2.h", "file:foo", "file:lv2.h"),
     ];
 
     for (relative, base, output) in examples.iter() {
