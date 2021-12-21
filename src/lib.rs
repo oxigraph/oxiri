@@ -701,8 +701,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
                     self.output_positions.scheme_end = base.positions.scheme_end;
                     self.output_positions.authority_end = base.positions.authority_end;
                     self.output_positions.path_end = base.positions.path_end;
-                    self.remove_last_segment();
-                    self.output.push('/');
+                    self.remove_last_segment_leaving_slash();
                     self.parse_path()
                 }
             }
@@ -906,6 +905,17 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
             .unwrap_or(0);
         self.output
             .truncate(last_slash_position + self.output_positions.authority_end)
+    }
+
+    fn remove_last_segment_leaving_slash(&mut self) {
+        let last_slash_position =
+            self.output.as_str()[self.output_positions.authority_end..].rfind('/');
+        let truncate_point = self.output_positions.authority_end
+            + match last_slash_position {
+                None => 0,
+                Some(pos) => pos + 1,
+            };
+        self.output.truncate(truncate_point)
     }
 
     #[inline]
