@@ -175,6 +175,8 @@ fn test_wrong_relative_parsing() {
         //
         // from a post to the W3C uri list on 2004-02-17
         "http://w3c.org:80path1/path2",
+        // relative IRIs do not accept colon in the first path segment
+        ":a/b",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
