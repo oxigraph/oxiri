@@ -83,7 +83,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions = IriParser::parse(iri, Some(&self), &mut target_buffer)?;
+        let positions = IriParser::parse(iri, Some(self), &mut target_buffer)?;
         Ok(Iri {
             iri: target_buffer,
             positions,
@@ -104,7 +104,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(iri, Some(&self), target_buffer)?;
+        IriParser::parse(iri, Some(self), target_buffer)?;
         Ok(())
     }
 
