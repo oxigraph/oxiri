@@ -128,6 +128,9 @@ fn test_relative_parsing() {
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
     for e in examples.iter() {
+        if let Err(error) = Iri::parse_relative(*e) {
+            panic!("{} on relative IRI {}", error, e);
+        }
         if let Err(error) = base.resolve(*e) {
             panic!("{} on relative IRI {}", error, e);
         }
