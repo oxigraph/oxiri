@@ -56,7 +56,7 @@ pub struct Iri<T> {
 }
 
 impl<T: Deref<Target = str>> Iri<T> {
-    /// Parses and validates the IRI following [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI syntax.
+    /// Parses and validates the IRI following [RFC 3987](https://www.ietf.org/rfc/rfc3987) `IRI` syntax.
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
@@ -66,8 +66,23 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Iri::parse("http://foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let base: Option<&Iri<&str>> = None;
-        let positions = IriParser::parse(&iri, base, &mut VoidOutputBuffer::default())?;
+        let mode: ParseMode<&Iri<&str>> = ParseMode::Absolute;
+        let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
+        Ok(Self { iri, positions })
+    }
+
+    /// Parses and validates the IRI following [RFC 3987](https://www.ietf.org/rfc/rfc3987) `irelative-ref` syntax.
+    ///
+    /// This operation keeps internally the `iri` parameter and does not allocate.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// Iri::parse("http://foo.com/bar/baz").unwrap();
+    /// ```
+    pub fn parse_relative(iri: T) -> Result<Self, IriParseError> {
+        let mode: ParseMode<&Iri<&str>> = ParseMode::Relative;
+        let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
 
@@ -83,7 +98,8 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions = IriParser::parse(iri, Some(self), &mut target_buffer)?;
+        let mode = ParseMode::WithBase(self);
+        let positions = IriParser::parse(iri, mode, &mut target_buffer)?;
         Ok(Iri {
             iri: target_buffer,
             positions,
@@ -104,7 +120,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(iri, Some(self), target_buffer)?;
+        IriParser::parse(iri, ParseMode::WithBase(self), target_buffer)?;
         Ok(())
     }
 
@@ -120,9 +136,20 @@ impl<T: Deref<Target = str>> Iri<T> {
         self.iri
     }
 
+    /// Whether this IRI is an absolute IRI reference or not.
+    ///
+    /// NB: this can only return false if this IRI was parsed with [`Iri::parse_relative`]
+    #[inline]
+    pub fn is_absolute(&self) -> bool {
+        self.positions.scheme_end != 0
+    }
+
     /// Returns the IRI scheme.
     ///
     /// Beware: the scheme case is not normalized. Use case insensitive comparisons if you look for a specific scheme.
+    ///
+    /// Beware also that the scheme may be empty if this Iri is relative
+    /// (see [`Iri::parse_relative`] and [`Iri::is_absolute`]).
     ///
     /// ```
     /// use oxiri::Iri;
@@ -132,7 +159,11 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     #[inline]
     pub fn scheme(&self) -> &str {
-        &self.iri[..self.positions.scheme_end - 1]
+        if self.positions.scheme_end == 0 {
+            ""
+        } else {
+            &self.iri[..self.positions.scheme_end - 1]
+        }
     }
 
     /// Returns the IRI authority if it exists.
@@ -574,12 +605,18 @@ impl<'a> ParserInput<'a> {
     }
 }
 
+enum ParseMode<T> {
+    Absolute,
+    Relative,
+    WithBase(T),
+}
+
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
 ///
 /// A sub function takes care of each state
 struct IriParser<'a, BC: Deref<Target = str>, O: OutputBuffer> {
     iri: &'a str,
-    base: Option<&'a Iri<BC>>,
+    mode: ParseMode<&'a Iri<BC>>,
     input: ParserInput<'a>,
     output: &'a mut O,
     output_positions: IriElementsPositions,
@@ -589,12 +626,12 @@ struct IriParser<'a, BC: Deref<Target = str>, O: OutputBuffer> {
 impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
     fn parse(
         iri: &'a str,
-        base: Option<&'a Iri<BC>>,
+        mode: ParseMode<&'a Iri<BC>>,
         output: &'a mut O,
     ) -> Result<IriElementsPositions, IriParseError> {
         let mut parser = Self {
             iri,
-            base,
+            mode,
             input: ParserInput {
                 value: iri.chars(),
                 position: 0,
@@ -664,8 +701,9 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
     }
 
     fn parse_relative(&mut self) -> Result<(), IriParseError> {
-        if let Some(base) = self.base {
-            match self.input.front() {
+        use ParseMode::*;
+        match self.mode {
+            WithBase(base) => match self.input.front() {
                 None => {
                     self.output.push_str(&base.iri[..base.positions.query_end]);
                     self.output_positions.scheme_end = base.positions.scheme_end;
@@ -676,7 +714,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
                 }
                 Some('/') => {
                     self.input.next();
-                    self.parse_relative_slash()
+                    self.parse_relative_slash(base)
                 }
                 Some('?') => {
                     self.input.next();
@@ -705,14 +743,24 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
                     self.remove_last_segment_leaving_slash();
                     self.parse_path()
                 }
+            },
+            Relative => {
+                self.output_positions.scheme_end = 0;
+                self.input_scheme_end = 0;
+                if self.input.starts_with('/') {
+                    self.input.next();
+                    self.output.push('/');
+                    self.parse_path_or_authority()
+                } else {
+                    self.output_positions.authority_end = 0;
+                    self.parse_path()
+                }
             }
-        } else {
-            self.parse_error(IriParseErrorKind::NoScheme)
+            Absolute => self.parse_error(IriParseErrorKind::NoScheme),
         }
     }
 
-    fn parse_relative_slash(&mut self) -> Result<(), IriParseError> {
-        let base = self.base.unwrap();
+    fn parse_relative_slash(&mut self, base: &Iri<BC>) -> Result<(), IriParseError> {
         if self.input.starts_with('/') {
             self.input.next();
             self.output.push_str(&base.iri[..base.positions.scheme_end]);

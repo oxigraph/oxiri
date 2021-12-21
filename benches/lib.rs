@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use oxiri::Iri;
 
-fn bench_iri_parse(c: &mut Criterion) {
-    let examples = [
+fn abs_examples() -> &'static [&'static str] {
+    &[
         "file://foo",
         "ftp://ftp.is.co.za/rfc/rfc1808.txt",
         "http://www.ietf.org/rfc/rfc2396.txt",
@@ -27,12 +27,24 @@ fn bench_iri_parse(c: &mut Criterion) {
         "http://example.com/foo/bar?q=1&r=2#toto",
         "http://example.com/foo/bar/?q=1&r=2#toto",
         "http://example.com/foo/bar/.././baz",
-    ];
+    ]
+}
 
-    c.bench_function("w3c parse tests", |b| {
+fn bench_iri_parse(c: &mut Criterion) {
+    c.bench_function("Iri::parse", |b| {
         b.iter(|| {
-            for iri in examples.iter() {
+            for iri in abs_examples().iter() {
                 Iri::parse(*iri).unwrap();
+            }
+        })
+    });
+}
+
+fn bench_iri_parse_relative(c: &mut Criterion) {
+    c.bench_function("Iri::parse_relative", |b| {
+        b.iter(|| {
+            for iri in abs_examples().iter() {
+                Iri::parse_relative(*iri).unwrap();
             }
         })
     });
@@ -88,7 +100,7 @@ fn bench_iri_resolve(c: &mut Criterion) {
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
 
     let mut buf = String::new();
-    c.bench_function("w3c resolve tests", |b| {
+    c.bench_function("Iri::resolve_into", |b| {
         b.iter(|| {
             for relative in examples.iter() {
                 buf.clear();
@@ -98,6 +110,11 @@ fn bench_iri_resolve(c: &mut Criterion) {
     });
 }
 
-criterion_group!(iri, bench_iri_parse, bench_iri_resolve);
+criterion_group!(
+    iri,
+    bench_iri_parse,
+    bench_iri_parse_relative,
+    bench_iri_resolve
+);
 
 criterion_main!(iri);
