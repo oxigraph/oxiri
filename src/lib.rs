@@ -11,7 +11,7 @@
 //! assert_eq!(iri.as_str(), "http://foo.com/bar/bat#foo");
 //!
 //! // Extract IRI components
-//! assert_eq!(iri.scheme(), "http");
+//! assert_eq!(iri.scheme(), Some("http"));
 //! assert_eq!(iri.authority(), Some("foo.com"));
 //! assert_eq!(iri.path(), "/bar/bat");
 //! assert_eq!(iri.query(), None);
@@ -144,25 +144,25 @@ impl<T: Deref<Target = str>> Iri<T> {
         self.positions.scheme_end != 0
     }
 
-    /// Returns the IRI scheme.
+    /// Returns the IRI scheme if it exists.
     ///
     /// Beware: the scheme case is not normalized. Use case insensitive comparisons if you look for a specific scheme.
     ///
-    /// Beware also that the scheme may be empty if this Iri is relative
+    /// NB: only relative IRI references have no scheme
     /// (see [`Iri::parse_relative`] and [`Iri::is_absolute`]).
     ///
     /// ```
     /// use oxiri::Iri;
     ///
     /// let iri = Iri::parse("hTTp://example.com").unwrap();
-    /// assert_eq!("hTTp", iri.scheme());
+    /// assert_eq!(Some("hTTp"), iri.scheme());
     /// ```
     #[inline]
-    pub fn scheme(&self) -> &str {
+    pub fn scheme(&self) -> Option<&str> {
         if self.positions.scheme_end == 0 {
-            ""
+            None
         } else {
-            &self.iri[..self.positions.scheme_end - 1]
+            Some(&self.iri[..self.positions.scheme_end - 1])
         }
     }
 
