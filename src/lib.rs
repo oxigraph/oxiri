@@ -614,6 +614,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
 
     fn parse_scheme_start(&mut self) -> Result<(), IriParseError> {
         match self.input.front() {
+            Some(':') => self.parse_error(IriParseErrorKind::NoScheme),
             Some(c) if c.is_ascii_alphabetic() => self.parse_scheme(),
             _ => self.parse_relative(),
         }
