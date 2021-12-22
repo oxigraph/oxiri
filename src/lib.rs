@@ -886,7 +886,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
                 self.output.push('#');
                 return self.parse_fragment();
             } else {
-                self.read_url_codepoint_or_echar(c)?
+                self.read_url_query_codepoint_or_echar(c)?
             }
         }
         self.output_positions.query_end = self.output.len();
@@ -922,27 +922,44 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
     #[inline]
     fn read_url_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
         if c == '%' {
-            let c1 = self.input.next();
-            let c2 = self.input.next();
-            if c1.map_or(false, |c| c.is_ascii_hexdigit())
-                && c2.map_or(false, |c| c.is_ascii_hexdigit())
-            {
-                self.output.push('%');
-                self.output.push(c1.unwrap());
-                self.output.push(c2.unwrap());
-                Ok(())
-            } else {
-                self.parse_error(IriParseErrorKind::InvalidPercentEncoding([
-                    Some('%'),
-                    c1,
-                    c2,
-                ]))
-            }
+            self.read_echar()
         } else if is_url_code_point(c) {
             self.output.push(c);
             Ok(())
         } else {
             self.parse_error(IriParseErrorKind::InvalidIriCodePoint(c))
+        }
+    }
+
+    #[inline]
+    fn read_url_query_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
+        if c == '%' {
+            self.read_echar()
+        } else if is_url_query_code_point(c) {
+            self.output.push(c);
+            Ok(())
+        } else {
+            self.parse_error(IriParseErrorKind::InvalidIriCodePoint(c))
+        }
+    }
+
+    #[inline]
+    fn read_echar(&mut self) -> Result<(), IriParseError> {
+        let c1 = self.input.next();
+        let c2 = self.input.next();
+        if c1.map_or(false, |c| c.is_ascii_hexdigit())
+            && c2.map_or(false, |c| c.is_ascii_hexdigit())
+        {
+            self.output.push('%');
+            self.output.push(c1.unwrap());
+            self.output.push(c2.unwrap());
+            Ok(())
+        } else {
+            self.parse_error(IriParseErrorKind::InvalidPercentEncoding([
+                Some('%'),
+                c1,
+                c2,
+            ]))
         }
     }
 
@@ -953,6 +970,49 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
 }
 
 fn is_url_code_point(c: char) -> bool {
+    matches!(c,
+        'a'..='z'
+        | 'A'..='Z'
+        | '0'..='9'
+        | '!'
+        | '$'
+        | '&'
+        | '\''
+        | '('
+        | ')'
+        | '*'
+        | '+'
+        | ','
+        | '-'
+        | '.'
+        | '/'
+        | ':'
+        | ';'
+        | '='
+        | '?'
+        | '@'
+        | '_'
+        | '~'
+        | '\u{A0}'..='\u{D7FF}'
+        | '\u{FDF0}'..='\u{FFFD}'
+        | '\u{10000}'..='\u{1FFFD}'
+        | '\u{20000}'..='\u{2FFFD}'
+        | '\u{30000}'..='\u{3FFFD}'
+        | '\u{40000}'..='\u{4FFFD}'
+        | '\u{50000}'..='\u{5FFFD}'
+        | '\u{60000}'..='\u{6FFFD}'
+        | '\u{70000}'..='\u{7FFFD}'
+        | '\u{80000}'..='\u{8FFFD}'
+        | '\u{90000}'..='\u{9FFFD}'
+        | '\u{A0000}'..='\u{AFFFD}'
+        | '\u{B0000}'..='\u{BFFFD}'
+        | '\u{C0000}'..='\u{CFFFD}'
+        | '\u{D0000}'..='\u{DFFFD}'
+        | '\u{E1000}'..='\u{EFFFD}'
+    )
+}
+
+fn is_url_query_code_point(c: char) -> bool {
     matches!(c,
         'a'..='z'
         | 'A'..='Z'
@@ -994,5 +1054,6 @@ fn is_url_code_point(c: char) -> bool {
         | '\u{D0000}'..='\u{DFFFD}'
         | '\u{E1000}'..='\u{EFFFD}'
         | '\u{F0000}'..='\u{FFFFD}'
-        | '\u{100000}'..='\u{10FFFD}')
+        | '\u{100000}'..='\u{10FFFD}'
+    )
 }
