@@ -121,6 +121,9 @@ fn test_relative_parsing() {
         //-- Random other things that crop up
         "http://example/Andr&#567;",
         "file:///C:/DEV/Haskell/lib/HXmlToolbox-3.01/examples/",
+        // iprivate characters are allowed in query
+        "http://a/?\u{E000}",
+        "?\u{E000}",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
@@ -177,6 +180,11 @@ fn test_wrong_relative_parsing() {
         "http://w3c.org:80path1/path2",
         // relative IRIs do not accept colon in the first path segment
         ":a/b",
+        // iprivate characters are not allowed in path not in fragment
+        "http://example.com/\u{E000}",
+        "\u{E000}",
+        "http://example.com/#\u{E000}",
+        "#\u{E000}",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
