@@ -30,7 +30,7 @@
 
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -73,8 +73,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// IriRef::parse("//foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let positions =
-            IriParser::parse(&iri, ParseMode::Relative, &mut VoidOutputBuffer::default())?;
+        let positions = IriParser::parse(&iri, None, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
 
@@ -90,8 +89,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let mode = ParseMode::WithBase(self.as_ref());
-        let positions = IriParser::parse(iri, mode, &mut target_buffer)?;
+        let positions = IriParser::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
         Ok(IriRef {
             iri: target_buffer,
             positions,
@@ -112,7 +110,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(iri, ParseMode::WithBase(self.as_ref()), target_buffer)?;
+        IriParser::parse(iri, Some(self.as_ref()), target_buffer)?;
         Ok(())
     }
 
@@ -489,9 +487,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Iri::parse("http://foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let positions =
-            IriParser::parse(&iri, ParseMode::Absolute, &mut VoidOutputBuffer::default())?;
-        Ok(Self(IriRef { iri, positions }))
+        IriRef::parse(iri)?.try_into()
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -1026,18 +1022,12 @@ impl<'a> ParserInput<'a> {
     }
 }
 
-enum ParseMode<'a> {
-    Absolute, //TODO: remove?
-    Relative,
-    WithBase(IriRef<&'a str>),
-}
-
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
 ///
 /// A sub function takes care of each state
 struct IriParser<'a, O: OutputBuffer> {
     iri: &'a str,
-    mode: ParseMode<'a>,
+    base: Option<IriRef<&'a str>>,
     input: ParserInput<'a>,
     output: &'a mut O,
     output_positions: IriElementsPositions,
@@ -1047,12 +1037,12 @@ struct IriParser<'a, O: OutputBuffer> {
 impl<'a, O: OutputBuffer> IriParser<'a, O> {
     fn parse(
         iri: &'a str,
-        mode: ParseMode<'a>,
+        base: Option<IriRef<&'a str>>,
         output: &'a mut O,
     ) -> Result<IriElementsPositions, IriParseError> {
         let mut parser = Self {
             iri,
-            mode,
+            base,
             input: ParserInput {
                 value: iri.chars(),
                 position: 0,
@@ -1122,9 +1112,8 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
     }
 
     fn parse_relative(&mut self) -> Result<(), IriParseError> {
-        use ParseMode::*;
-        match self.mode {
-            WithBase(base) => match self.input.front() {
+        if let Some(base) = self.base {
+            match self.input.front() {
                 None => {
                     self.output.push_str(&base.iri[..base.positions.query_end]);
                     self.output_positions.scheme_end = base.positions.scheme_end;
@@ -1164,20 +1153,18 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
                     self.remove_last_segment_leaving_slash();
                     self.parse_path()
                 }
-            },
-            Relative => {
-                self.output_positions.scheme_end = 0;
-                self.input_scheme_end = 0;
-                if self.input.starts_with('/') {
-                    self.input.next();
-                    self.output.push('/');
-                    self.parse_path_or_authority()
-                } else {
-                    self.output_positions.authority_end = 0;
-                    self.parse_path()
-                }
             }
-            Absolute => self.parse_error(IriParseErrorKind::NoScheme),
+        } else {
+            self.output_positions.scheme_end = 0;
+            self.input_scheme_end = 0;
+            if self.input.starts_with('/') {
+                self.input.next();
+                self.output.push('/');
+                self.parse_path_or_authority()
+            } else {
+                self.output_positions.authority_end = 0;
+                self.parse_path()
+            }
         }
     }
 
