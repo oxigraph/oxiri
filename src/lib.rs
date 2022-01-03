@@ -11,7 +11,7 @@
 //! assert_eq!(iri.as_str(), "http://foo.com/bar/bat#foo");
 //!
 //! // Extract IRI components
-//! assert_eq!(iri.scheme(), Some("http"));
+//! assert_eq!(iri.scheme(), "http");
 //! assert_eq!(iri.authority(), Some("foo.com"));
 //! assert_eq!(iri.path(), "/bar/bat");
 //! assert_eq!(iri.query(), None);
@@ -30,32 +30,13 @@
 
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
 use std::str::{Chars, FromStr};
-
-/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
-///
-/// Instances of this type are guaranteed to be absolute,
-/// unlike [`IriRef`].
-///
-/// ```
-/// use oxiri::Iri;
-///
-/// // Parse and validate base IRI
-/// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
-///
-/// // Validate and resolve relative IRI
-/// let iri = base_iri.resolve("bat#foo").unwrap();
-/// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
-///
-/// // Iri::parse will err on relative IRIs.
-/// assert!(Iri::parse("../bar/baz").is_err())
-/// ```
-pub type Iri<T> = ParsedIri<T, true>;
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI reference.
 ///
@@ -75,25 +56,430 @@ pub type Iri<T> = ParsedIri<T, true>;
 /// // IriRef's *can* also be absolute.
 /// assert!(IriRef::parse("http://foo.com/bar/baz").is_ok())
 /// ```
-pub type IriRef<T> = ParsedIri<T, false>;
-
-/// Common implementation of [`Iri`] and [`IriRef`].
-///
-/// The `ABSOLUTE` parameter indicates whether the IRI is required to be absolute:
-/// * with `ABSOLUTE=true`, only absolute IRI references will be accepted (see [`Iri`]);
-/// * with `ABSOLUTE=false`, both absolute and relative IRI references will be accepted (see [`IriRef`]).
 #[derive(Clone, Copy)]
-pub struct ParsedIri<T, const ABSOLUTE: bool> {
+pub struct IriRef<T> {
     iri: T,
     positions: IriElementsPositions,
 }
 
-impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
-    /// Parses and validates the IRI following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987).
+impl<T: Deref<Target = str>> IriRef<T> {
+    /// Parses and validates the IRI-reference following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987).
     ///
-    /// More precisely, this method will use
-    /// * the `IRI` production rule if `ABSOLUTE` is true,
-    /// * the `IRI-reference` production rule if `ABSOLUTE` is false.
+    /// This operation keeps internally the `iri` parameter and does not allocate.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// IriRef::parse("//foo.com/bar/baz").unwrap();
+    /// ```
+    pub fn parse(iri: T) -> Result<Self, IriParseError> {
+        let positions =
+            IriParser::parse(&iri, ParseMode::Relative, &mut VoidOutputBuffer::default())?;
+        Ok(Self { iri, positions })
+    }
+
+    /// Validates and resolved a relative IRI against the current IRI
+    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let base_iri = IriRef::parse("//foo.com/bar/baz").unwrap();
+    /// let iri = base_iri.resolve("bat#foo").unwrap();
+    /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
+    /// ```
+    pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
+        let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
+        let mode = ParseMode::WithBase(self.as_ref());
+        let positions = IriParser::parse(iri, mode, &mut target_buffer)?;
+        Ok(IriRef {
+            iri: target_buffer,
+            positions,
+        })
+    }
+
+    /// Validates and resolved a relative IRI against the current IRI
+    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
+    ///
+    /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let base_iri = IriRef::parse("//foo.com/bar/baz").unwrap();
+    /// let mut result = String::default();
+    /// let iri = base_iri.resolve_into("bat#foo", &mut result).unwrap();
+    /// assert_eq!(result, "//foo.com/bar/bat#foo");
+    /// ```
+    pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
+        IriParser::parse(iri, ParseMode::WithBase(self.as_ref()), target_buffer)?;
+        Ok(())
+    }
+
+    /// Returns an `IriRef` borrowing this IRI's text.
+    #[inline]
+    pub fn as_ref(&self) -> IriRef<&str> {
+        IriRef {
+            iri: &self.iri,
+            positions: self.positions,
+        }
+    }
+
+    /// Returns the underlying IRI representation.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let iri = IriRef::parse("//example.com/foo").unwrap();
+    /// assert_eq!(iri.as_str(), "//example.com/foo");
+    /// ```
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.iri
+    }
+
+    /// Returns the underlying IRI representation.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let iri = IriRef::parse("//example.com/foo").unwrap();
+    /// assert_eq!(iri.into_inner(), "//example.com/foo");
+    /// ```
+    #[inline]
+    pub fn into_inner(self) -> T {
+        self.iri
+    }
+
+    /// Whether this IRI is an absolute IRI reference or not.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// assert!(IriRef::parse("http://example.com/foo").unwrap().is_absolute());
+    /// assert!(!IriRef::parse("/foo").unwrap().is_absolute());
+    /// ```
+    #[inline]
+    pub fn is_absolute(&self) -> bool {
+        self.positions.scheme_end != 0
+    }
+
+    /// Returns the IRI scheme if it exists.
+    ///
+    /// Beware: the scheme case is not normalized. Use case insensitive comparisons if you look for a specific scheme.
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let iri = IriRef::parse("hTTp://example.com").unwrap();
+    /// assert_eq!(iri.scheme(), Some("hTTp"));
+    /// ```
+    #[inline]
+    pub fn scheme(&self) -> Option<&str> {
+        if self.positions.scheme_end == 0 {
+            None
+        } else {
+            Some(&self.iri[..self.positions.scheme_end - 1])
+        }
+    }
+
+    /// Returns the IRI authority if it exists.
+    ///
+    /// Beware: the host case is not normalized. Use case insensitive comparisons if you look for a specific host.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let http = IriRef::parse("http://foo:pass@example.com:80/my/path").unwrap();
+    /// assert_eq!(http.authority(), Some("foo:pass@example.com:80"));
+    ///
+    /// let mailto = IriRef::parse("mailto:foo@bar.com").unwrap();
+    /// assert_eq!(mailto.authority(), None);
+    /// ```
+    #[inline]
+    pub fn authority(&self) -> Option<&str> {
+        if self.positions.scheme_end + 2 > self.positions.authority_end {
+            None
+        } else {
+            Some(&self.iri[self.positions.scheme_end + 2..self.positions.authority_end])
+        }
+    }
+
+    /// Returns the IRI path.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let http = IriRef::parse("http://foo:pass@example.com:80/my/path?foo=bar").unwrap();
+    /// assert_eq!(http.path(), "/my/path");
+    ///
+    /// let mailto = IriRef::parse("mailto:foo@bar.com").unwrap();
+    /// assert_eq!(mailto.path(), "foo@bar.com");
+    /// ```
+    #[inline]
+    pub fn path(&self) -> &str {
+        &self.iri[self.positions.authority_end..self.positions.path_end]
+    }
+
+    /// Returns the IRI query if it exists.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let iri = IriRef::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// assert_eq!(iri.query(), Some("query=foo"));
+    /// ```
+    #[inline]
+    pub fn query(&self) -> Option<&str> {
+        if self.positions.path_end >= self.positions.query_end {
+            None
+        } else {
+            Some(&self.iri[self.positions.path_end + 1..self.positions.query_end])
+        }
+    }
+
+    /// Returns the IRI fragment if it exists.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let iri = IriRef::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// assert_eq!(iri.fragment(), Some("frag"));
+    /// ```
+    #[inline]
+    pub fn fragment(&self) -> Option<&str> {
+        if self.positions.query_end >= self.iri.len() {
+            None
+        } else {
+            Some(&self.iri[self.positions.query_end + 1..])
+        }
+    }
+}
+
+impl<Lft: PartialEq<Rhs>, Rhs> PartialEq<IriRef<Rhs>> for IriRef<Lft> {
+    #[inline]
+    fn eq(&self, other: &IriRef<Rhs>) -> bool {
+        self.iri.eq(&other.iri)
+    }
+}
+
+impl<T: PartialEq<str>> PartialEq<str> for IriRef<T> {
+    #[inline]
+    fn eq(&self, other: &str) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<'a, T: PartialEq<&'a str>> PartialEq<&'a str> for IriRef<T> {
+    #[inline]
+    fn eq(&self, other: &&'a str) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<T: PartialEq<String>> PartialEq<String> for IriRef<T> {
+    #[inline]
+    fn eq(&self, other: &String) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Cow<'a, str>> for IriRef<T> {
+    #[inline]
+    fn eq(&self, other: &Cow<'a, str>) -> bool {
+        self.iri.eq(other)
+    }
+}
+
+impl<T: PartialEq<str>> PartialEq<IriRef<T>> for str {
+    #[inline]
+    fn eq(&self, other: &IriRef<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<'a, T: PartialEq<&'a str>> PartialEq<IriRef<T>> for &'a str {
+    #[inline]
+    fn eq(&self, other: &IriRef<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<T: PartialEq<String>> PartialEq<IriRef<T>> for String {
+    #[inline]
+    fn eq(&self, other: &IriRef<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<IriRef<T>> for Cow<'a, str> {
+    #[inline]
+    fn eq(&self, other: &IriRef<T>) -> bool {
+        other.iri.eq(self)
+    }
+}
+
+impl<T: Eq> Eq for IriRef<T> {}
+
+impl<T: Hash> Hash for IriRef<T> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.iri.hash(state)
+    }
+}
+
+impl<Lft: PartialOrd<Rhs>, Rhs> PartialOrd<IriRef<Rhs>> for IriRef<Lft> {
+    #[inline]
+    fn partial_cmp(&self, other: &IriRef<Rhs>) -> Option<Ordering> {
+        self.iri.partial_cmp(&other.iri)
+    }
+}
+
+impl<T: Ord> Ord for IriRef<T> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iri.cmp(&other.iri)
+    }
+}
+
+impl<T: Deref<Target = str>> Deref for IriRef<T> {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        self.iri.deref()
+    }
+}
+
+impl<T: AsRef<str>> AsRef<str> for IriRef<T> {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.iri.as_ref()
+    }
+}
+
+impl<T: Borrow<str>> Borrow<str> for IriRef<T> {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.iri.borrow()
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for IriRef<T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.iri.fmt(f)
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for IriRef<T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.iri.fmt(f)
+    }
+}
+
+impl FromStr for IriRef<String> {
+    type Err = IriParseError;
+
+    #[inline]
+    fn from_str(iri: &str) -> Result<Self, IriParseError> {
+        Self::parse(iri.to_owned())
+    }
+}
+
+impl<'a> From<IriRef<&'a str>> for IriRef<String> {
+    #[inline]
+    fn from(iri: IriRef<&'a str>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<IriRef<Cow<'a, str>>> for IriRef<String> {
+    #[inline]
+    fn from(iri: IriRef<Cow<'a, str>>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl From<IriRef<Box<str>>> for IriRef<String> {
+    #[inline]
+    fn from(iri: IriRef<Box<str>>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<IriRef<&'a str>> for IriRef<Cow<'a, str>> {
+    #[inline]
+    fn from(iri: IriRef<&'a str>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<IriRef<String>> for IriRef<Cow<'a, str>> {
+    #[inline]
+    fn from(iri: IriRef<String>) -> Self {
+        Self {
+            iri: iri.iri.into(),
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<&'a IriRef<String>> for IriRef<&'a str> {
+    #[inline]
+    fn from(iri: &'a IriRef<String>) -> Self {
+        Self {
+            iri: &iri.iri,
+            positions: iri.positions,
+        }
+    }
+}
+
+impl<'a> From<&'a IriRef<Cow<'a, str>>> for IriRef<&'a str> {
+    #[inline]
+    fn from(iri: &'a IriRef<Cow<'a, str>>) -> Self {
+        Self {
+            iri: &iri.iri,
+            positions: iri.positions,
+        }
+    }
+}
+
+/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
+///
+/// Instances of this type are guaranteed to be absolute,
+/// unlike [`IriRef`].
+///
+/// ```
+/// use oxiri::Iri;
+///
+/// // Parse and validate base IRI
+/// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
+///
+/// // Validate and resolve relative IRI
+/// let iri = base_iri.resolve("bat#foo").unwrap();
+/// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
+///
+/// // Iri::parse will err on relative IRIs.
+/// assert!(Iri::parse("../bar/baz").is_err())
+/// ```
+#[derive(Clone, Copy)]
+pub struct Iri<T>(IriRef<T>);
+
+impl<T: Deref<Target = str>> Iri<T> {
+    /// Parses and validates the IRI following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987).
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
@@ -103,13 +489,9 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// Iri::parse("http://foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let mode: ParseMode<'_> = if ABSOLUTE {
-            ParseMode::Absolute
-        } else {
-            ParseMode::Relative
-        };
-        let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
-        Ok(Self { iri, positions })
+        let positions =
+            IriParser::parse(&iri, ParseMode::Absolute, &mut VoidOutputBuffer::default())?;
+        Ok(Self(IriRef { iri, positions }))
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -122,14 +504,8 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// let iri = base_iri.resolve("bat#foo").unwrap();
     /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
     /// ```
-    pub fn resolve(&self, iri: &str) -> Result<ParsedIri<String, ABSOLUTE>, IriParseError> {
-        let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let mode = ParseMode::WithBase(self.as_ref().into_iri_ref());
-        let positions = IriParser::parse(iri, mode, &mut target_buffer)?;
-        Ok(ParsedIri {
-            iri: target_buffer,
-            positions,
-        })
+    pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
+        Ok(Iri(self.0.resolve(iri)?))
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -146,85 +522,54 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(
-            iri,
-            ParseMode::WithBase(self.as_ref().into_iri_ref()),
-            target_buffer,
-        )?;
-        Ok(())
+        self.0.resolve_into(iri, target_buffer)
     }
 
     /// Returns an IRI borrowing this IRI's text
     #[inline]
-    pub fn as_ref(&self) -> ParsedIri<&str, ABSOLUTE> {
-        ParsedIri {
-            iri: &self.iri,
-            positions: self.positions,
-        }
-    }
-
-    /// Convert into an [`IriRef`] (i.e. allowed to be relative).
-    #[inline]
-    pub fn into_iri_ref(self) -> IriRef<T> {
-        IriRef {
-            iri: self.iri,
-            positions: self.positions,
-        }
-    }
-
-    /// Convert into an [`Iri`] (i.e. guaranteed to be absolute).
-    ///
-    /// # Pre-condition
-    /// This `ParsedIri` must be [absolute](`ParsedIri::is_absolute`).
-    #[inline]
-    pub fn into_iri_unchecked(self) -> Iri<T> {
-        debug_assert!(self.is_absolute());
-        Iri {
-            iri: self.iri,
-            positions: self.positions,
-        }
+    pub fn as_ref(&self) -> Iri<&str> {
+        Iri(self.0.as_ref())
     }
 
     /// Returns the underlying IRI representation.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let iri = Iri::parse("http://example.com/foo").unwrap();
+    /// assert_eq!(iri.as_str(), "http://example.com/foo");
+    /// ```
     #[inline]
     pub fn as_str(&self) -> &str {
-        &self.iri
+        self.0.as_str()
     }
 
     /// Returns the underlying IRI representation.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let iri = Iri::parse("http://example.com/foo").unwrap();
+    /// assert_eq!(iri.into_inner(), "http://example.com/foo");
+    /// ```
     #[inline]
     pub fn into_inner(self) -> T {
-        self.iri
+        self.0.into_inner()
     }
 
-    /// Whether this IRI is an absolute IRI reference or not.
-    ///
-    /// NB: this will always return `true` for [`Iri`]
-    /// (i.e. when the `ABSOLUTE` parameter is `true`).
-    #[inline]
-    pub fn is_absolute(&self) -> bool {
-        ABSOLUTE || self.positions.scheme_end != 0
-    }
-
-    /// Returns the IRI scheme if it exists.
+    /// Returns the IRI scheme.
     ///
     /// Beware: the scheme case is not normalized. Use case insensitive comparisons if you look for a specific scheme.
     ///
-    /// NB: this can only be `None` for [`IriRef`]
-    /// (i.e. when the `ABSOLUTE` parameter is `false).
     /// ```
     /// use oxiri::Iri;
     ///
     /// let iri = Iri::parse("hTTp://example.com").unwrap();
-    /// assert_eq!(Some("hTTp"), iri.scheme());
+    /// assert_eq!(iri.scheme(), "hTTp");
     /// ```
     #[inline]
-    pub fn scheme(&self) -> Option<&str> {
-        if self.positions.scheme_end == 0 {
-            None
-        } else {
-            Some(&self.iri[..self.positions.scheme_end - 1])
-        }
+    pub fn scheme(&self) -> &str {
+        self.0.scheme().expect("The IRI should be absolute")
     }
 
     /// Returns the IRI authority if it exists.
@@ -242,11 +587,7 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// ```
     #[inline]
     pub fn authority(&self) -> Option<&str> {
-        if self.positions.scheme_end + 2 > self.positions.authority_end {
-            None
-        } else {
-            Some(&self.iri[self.positions.scheme_end + 2..self.positions.authority_end])
-        }
+        self.0.authority()
     }
 
     /// Returns the IRI path.
@@ -262,7 +603,7 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// ```
     #[inline]
     pub fn path(&self) -> &str {
-        &self.iri[self.positions.authority_end..self.positions.path_end]
+        self.0.path()
     }
 
     /// Returns the IRI query if it exists.
@@ -275,11 +616,7 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// ```
     #[inline]
     pub fn query(&self) -> Option<&str> {
-        if self.positions.path_end >= self.positions.query_end {
-            None
-        } else {
-            Some(&self.iri[self.positions.path_end + 1..self.positions.query_end])
-        }
+        self.0.query()
     }
 
     /// Returns the IRI fragment if it exists.
@@ -292,140 +629,162 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// ```
     #[inline]
     pub fn fragment(&self) -> Option<&str> {
-        if self.positions.query_end >= self.iri.len() {
-            None
-        } else {
-            Some(&self.iri[self.positions.query_end + 1..])
-        }
+        self.0.fragment()
     }
 }
 
-impl<Lft: PartialEq<Rhs>, Rhs, const A1: bool, const A2: bool> PartialEq<ParsedIri<Rhs, A2>>
-    for ParsedIri<Lft, A1>
-{
+impl<Lft: PartialEq<Rhs>, Rhs> PartialEq<Iri<Rhs>> for Iri<Lft> {
     #[inline]
-    fn eq(&self, other: &ParsedIri<Rhs, A2>) -> bool {
-        self.iri.eq(&other.iri)
+    fn eq(&self, other: &Iri<Rhs>) -> bool {
+        self.0.eq(&other.0)
     }
 }
 
-impl<T: PartialEq<str>, const A: bool> PartialEq<str> for ParsedIri<T, A> {
+impl<Lft: PartialEq<Rhs>, Rhs> PartialEq<IriRef<Rhs>> for Iri<Lft> {
+    #[inline]
+    fn eq(&self, other: &IriRef<Rhs>) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<Lft: PartialEq<Rhs>, Rhs> PartialEq<Iri<Rhs>> for IriRef<Lft> {
+    #[inline]
+    fn eq(&self, other: &Iri<Rhs>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<str>> PartialEq<str> for Iri<T> {
     #[inline]
     fn eq(&self, other: &str) -> bool {
-        self.iri.eq(other)
+        self.0.eq(other)
     }
 }
 
-impl<'a, T: PartialEq<&'a str>, const A: bool> PartialEq<&'a str> for ParsedIri<T, A> {
+impl<'a, T: PartialEq<&'a str>> PartialEq<&'a str> for Iri<T> {
     #[inline]
     fn eq(&self, other: &&'a str) -> bool {
-        self.iri.eq(other)
+        self.0.eq(other)
     }
 }
 
-impl<T: PartialEq<String>, const A: bool> PartialEq<String> for ParsedIri<T, A> {
+impl<T: PartialEq<String>> PartialEq<String> for Iri<T> {
     #[inline]
     fn eq(&self, other: &String) -> bool {
-        self.iri.eq(other)
+        self.0.eq(other)
     }
 }
 
-impl<'a, T: PartialEq<Cow<'a, str>>, const A: bool> PartialEq<Cow<'a, str>> for ParsedIri<T, A> {
+impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Cow<'a, str>> for Iri<T> {
     #[inline]
     fn eq(&self, other: &Cow<'a, str>) -> bool {
-        self.iri.eq(other)
+        self.0.eq(other)
     }
 }
 
-impl<T: PartialEq<str>, const A: bool> PartialEq<ParsedIri<T, A>> for str {
+impl<T: PartialEq<str>> PartialEq<Iri<T>> for str {
     #[inline]
-    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
-        other.iri.eq(self)
+    fn eq(&self, other: &Iri<T>) -> bool {
+        self.eq(&other.0)
     }
 }
 
-impl<'a, T: PartialEq<&'a str>, const A: bool> PartialEq<ParsedIri<T, A>> for &'a str {
+impl<'a, T: PartialEq<&'a str>> PartialEq<Iri<T>> for &'a str {
     #[inline]
-    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
-        other.iri.eq(self)
+    fn eq(&self, other: &Iri<T>) -> bool {
+        self.eq(&other.0)
     }
 }
 
-impl<T: PartialEq<String>, const A: bool> PartialEq<ParsedIri<T, A>> for String {
+impl<T: PartialEq<String>> PartialEq<Iri<T>> for String {
     #[inline]
-    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
-        other.iri.eq(self)
+    fn eq(&self, other: &Iri<T>) -> bool {
+        self.eq(&other.0)
     }
 }
 
-impl<'a, T: PartialEq<Cow<'a, str>>, const A: bool> PartialEq<ParsedIri<T, A>> for Cow<'a, str> {
+impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Iri<T>> for Cow<'a, str> {
     #[inline]
-    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
-        other.iri.eq(self)
+    fn eq(&self, other: &Iri<T>) -> bool {
+        self.eq(&other.0)
     }
 }
 
-impl<T: Eq, const A: bool> Eq for ParsedIri<T, A> {}
+impl<T: Eq> Eq for Iri<T> {}
 
-impl<T: Hash, const A: bool> Hash for ParsedIri<T, A> {
+impl<T: Hash> Hash for Iri<T> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.iri.hash(state)
+        self.0.hash(state)
     }
 }
 
-impl<T: PartialOrd, const A: bool> PartialOrd for ParsedIri<T, A> {
+impl<Lft: PartialOrd<Rhs>, Rhs> PartialOrd<Iri<Rhs>> for Iri<Lft> {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.iri.partial_cmp(&other.iri)
+    fn partial_cmp(&self, other: &Iri<Rhs>) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
     }
 }
 
-impl<T: Ord, const A: bool> Ord for ParsedIri<T, A> {
+impl<Lft: PartialOrd<Rhs>, Rhs> PartialOrd<IriRef<Rhs>> for Iri<Lft> {
+    #[inline]
+    fn partial_cmp(&self, other: &IriRef<Rhs>) -> Option<Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl<Lft: PartialOrd<Rhs>, Rhs> PartialOrd<Iri<Rhs>> for IriRef<Lft> {
+    #[inline]
+    fn partial_cmp(&self, other: &Iri<Rhs>) -> Option<Ordering> {
+        self.partial_cmp(&other.0)
+    }
+}
+
+impl<T: Ord> Ord for Iri<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        self.iri.cmp(&other.iri)
+        self.0.cmp(&other.0)
     }
 }
 
-impl<T: Deref<Target = str>, const A: bool> Deref for ParsedIri<T, A> {
+impl<T: Deref<Target = str>> Deref for Iri<T> {
     type Target = str;
 
     #[inline]
     fn deref(&self) -> &str {
-        self.iri.deref()
+        self.0.deref()
     }
 }
 
-impl<T: AsRef<str>, const A: bool> AsRef<str> for ParsedIri<T, A> {
+impl<T: AsRef<str>> AsRef<str> for Iri<T> {
     #[inline]
     fn as_ref(&self) -> &str {
-        self.iri.as_ref()
+        self.0.as_ref()
     }
 }
 
-impl<T: Borrow<str>, const A: bool> Borrow<str> for ParsedIri<T, A> {
+impl<T: Borrow<str>> Borrow<str> for Iri<T> {
     #[inline]
     fn borrow(&self) -> &str {
-        self.iri.borrow()
+        self.0.borrow()
     }
 }
 
-impl<T: fmt::Debug, const A: bool> fmt::Debug for ParsedIri<T, A> {
+impl<T: fmt::Debug> fmt::Debug for Iri<T> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.iri.fmt(f)
+        self.0.fmt(f)
     }
 }
 
-impl<T: fmt::Display, const A: bool> fmt::Display for ParsedIri<T, A> {
+impl<T: fmt::Display> fmt::Display for Iri<T> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.iri.fmt(f)
+        self.0.fmt(f)
     }
 }
 
-impl<const A: bool> FromStr for ParsedIri<String, A> {
+impl FromStr for Iri<String> {
     type Err = IriParseError;
 
     #[inline]
@@ -434,72 +793,71 @@ impl<const A: bool> FromStr for ParsedIri<String, A> {
     }
 }
 
-impl<'a, const A: bool> From<ParsedIri<&'a str, A>> for ParsedIri<String, A> {
+impl<'a> From<Iri<&'a str>> for Iri<String> {
     #[inline]
-    fn from(iri: ParsedIri<&'a str, A>) -> Self {
-        Self {
-            iri: iri.iri.into(),
-            positions: iri.positions,
-        }
+    fn from(iri: Iri<&'a str>) -> Self {
+        Self(iri.0.into())
     }
 }
 
-impl<'a, const A: bool> From<ParsedIri<Cow<'a, str>, A>> for ParsedIri<String, A> {
+impl<'a> From<Iri<Cow<'a, str>>> for Iri<String> {
     #[inline]
-    fn from(iri: ParsedIri<Cow<'a, str>, A>) -> Self {
-        Self {
-            iri: iri.iri.into(),
-            positions: iri.positions,
-        }
+    fn from(iri: Iri<Cow<'a, str>>) -> Self {
+        Self(iri.0.into())
     }
 }
 
-impl<const A: bool> From<ParsedIri<Box<str>, A>> for ParsedIri<String, A> {
+impl From<Iri<Box<str>>> for Iri<String> {
     #[inline]
-    fn from(iri: ParsedIri<Box<str>, A>) -> Self {
-        Self {
-            iri: iri.iri.into(),
-            positions: iri.positions,
-        }
+    fn from(iri: Iri<Box<str>>) -> Self {
+        Self(iri.0.into())
     }
 }
 
-impl<'a, const A: bool> From<ParsedIri<&'a str, A>> for ParsedIri<Cow<'a, str>, A> {
+impl<'a> From<Iri<&'a str>> for Iri<Cow<'a, str>> {
     #[inline]
-    fn from(iri: ParsedIri<&'a str, A>) -> Self {
-        Self {
-            iri: iri.iri.into(),
-            positions: iri.positions,
-        }
+    fn from(iri: Iri<&'a str>) -> Self {
+        Self(iri.0.into())
     }
 }
 
-impl<'a, const A: bool> From<ParsedIri<String, A>> for ParsedIri<Cow<'a, str>, A> {
+impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
     #[inline]
-    fn from(iri: ParsedIri<String, A>) -> Self {
-        Self {
-            iri: iri.iri.into(),
-            positions: iri.positions,
-        }
+    fn from(iri: Iri<String>) -> Self {
+        Self(iri.0.into())
     }
 }
 
-impl<'a, const A: bool> From<&'a ParsedIri<String, A>> for ParsedIri<&'a str, A> {
+impl<'a> From<&'a Iri<String>> for Iri<&'a str> {
     #[inline]
-    fn from(iri: &'a ParsedIri<String, A>) -> Self {
-        Self {
-            iri: &iri.iri,
-            positions: iri.positions,
-        }
+    fn from(iri: &'a Iri<String>) -> Self {
+        Self(iri.0.as_ref())
     }
 }
 
-impl<'a, const A: bool> From<&'a ParsedIri<Cow<'a, str>, A>> for ParsedIri<&'a str, A> {
+impl<'a> From<&'a Iri<Cow<'a, str>>> for Iri<&'a str> {
     #[inline]
-    fn from(iri: &'a ParsedIri<Cow<'a, str>, A>) -> Self {
-        Self {
-            iri: &iri.iri,
-            positions: iri.positions,
+    fn from(iri: &'a Iri<Cow<'a, str>>) -> Self {
+        Self(iri.0.as_ref())
+    }
+}
+
+impl<T: Deref<Target = str>> From<Iri<T>> for IriRef<T> {
+    fn from(iri: Iri<T>) -> Self {
+        iri.0
+    }
+}
+
+impl<T: Deref<Target = str>> TryFrom<IriRef<T>> for Iri<T> {
+    type Error = IriParseError;
+
+    fn try_from(iri: IriRef<T>) -> Result<Self, IriParseError> {
+        if iri.is_absolute() {
+            Ok(Self(iri))
+        } else {
+            Err(IriParseError {
+                kind: IriParseErrorKind::NoScheme,
+            })
         }
     }
 }
@@ -669,9 +1027,9 @@ impl<'a> ParserInput<'a> {
 }
 
 enum ParseMode<'a> {
-    Absolute,
+    Absolute, //TODO: remove?
     Relative,
-    WithBase(ParsedIri<&'a str, false>),
+    WithBase(IriRef<&'a str>),
 }
 
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
@@ -823,10 +1181,7 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
         }
     }
 
-    fn parse_relative_slash(
-        &mut self,
-        base: &ParsedIri<&'a str, false>,
-    ) -> Result<(), IriParseError> {
+    fn parse_relative_slash(&mut self, base: &IriRef<&'a str>) -> Result<(), IriParseError> {
         if self.input.starts_with('/') {
             self.input.next();
             self.output.push_str(&base.iri[..base.positions.scheme_end]);
