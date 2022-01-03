@@ -66,7 +66,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Iri::parse("http://foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let mode: ParseMode<&Iri<&str>> = ParseMode::Absolute;
+        let mode: ParseMode<'_> = ParseMode::Absolute;
         let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
@@ -81,7 +81,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Iri::parse("http://foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse_relative(iri: T) -> Result<Self, IriParseError> {
-        let mode: ParseMode<&Iri<&str>> = ParseMode::Relative;
+        let mode: ParseMode<'_> = ParseMode::Relative;
         let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
@@ -98,7 +98,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let mode = ParseMode::WithBase(self);
+        let mode = ParseMode::WithBase(self.as_ref());
         let positions = IriParser::parse(iri, mode, &mut target_buffer)?;
         Ok(Iri {
             iri: target_buffer,
@@ -120,8 +120,17 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(iri, ParseMode::WithBase(self), target_buffer)?;
+        IriParser::parse(iri, ParseMode::WithBase(self.as_ref()), target_buffer)?;
         Ok(())
+    }
+
+    /// Returns an IRI borrowing this IRI's text
+    #[inline]
+    pub fn as_ref(&self) -> Iri<&str> {
+        Iri {
+            iri: &self.iri,
+            positions: self.positions,
+        }
     }
 
     /// Returns the underlying IRI representation.
@@ -605,28 +614,28 @@ impl<'a> ParserInput<'a> {
     }
 }
 
-enum ParseMode<T> {
+enum ParseMode<'a> {
     Absolute,
     Relative,
-    WithBase(T),
+    WithBase(Iri<&'a str>),
 }
 
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
 ///
 /// A sub function takes care of each state
-struct IriParser<'a, BC: Deref<Target = str>, O: OutputBuffer> {
+struct IriParser<'a, O: OutputBuffer> {
     iri: &'a str,
-    mode: ParseMode<&'a Iri<BC>>,
+    mode: ParseMode<'a>,
     input: ParserInput<'a>,
     output: &'a mut O,
     output_positions: IriElementsPositions,
     input_scheme_end: usize,
 }
 
-impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
+impl<'a, O: OutputBuffer> IriParser<'a, O> {
     fn parse(
         iri: &'a str,
-        mode: ParseMode<&'a Iri<BC>>,
+        mode: ParseMode<'a>,
         output: &'a mut O,
     ) -> Result<IriElementsPositions, IriParseError> {
         let mut parser = Self {
@@ -714,7 +723,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
                 }
                 Some('/') => {
                     self.input.next();
-                    self.parse_relative_slash(base)
+                    self.parse_relative_slash(&base)
                 }
                 Some('?') => {
                     self.input.next();
@@ -760,7 +769,7 @@ impl<'a, BC: Deref<Target = str>, O: OutputBuffer> IriParser<'a, BC, O> {
         }
     }
 
-    fn parse_relative_slash(&mut self, base: &Iri<BC>) -> Result<(), IriParseError> {
+    fn parse_relative_slash(&mut self, base: &Iri<&'a str>) -> Result<(), IriParseError> {
         if self.input.starts_with('/') {
             self.input.next();
             self.output.push_str(&base.iri[..base.positions.scheme_end]);
