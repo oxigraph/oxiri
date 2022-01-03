@@ -1,5 +1,5 @@
 #![allow(clippy::eq_op)]
-use oxiri::Iri;
+use oxiri::{Iri, IriRef};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -128,7 +128,7 @@ fn test_relative_parsing() {
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
     for e in examples.iter() {
-        if let Err(error) = Iri::parse_relative(*e) {
+        if let Err(error) = IriRef::parse(*e) {
             panic!("{} on relative IRI {}", error, e);
         }
         if let Err(error) = base.resolve(*e) {

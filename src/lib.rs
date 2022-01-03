@@ -39,6 +39,9 @@ use std::str::{Chars, FromStr};
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
 ///
+/// Instances of this type are guaranteed to be absolute,
+/// unlike [`IriRef`].
+///
 /// ```
 /// use oxiri::Iri;
 ///
@@ -48,9 +51,37 @@ use std::str::{Chars, FromStr};
 /// // Validate and resolve relative IRI
 /// let iri = base_iri.resolve("bat#foo").unwrap();
 /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
+///
+/// // Iri::parse will err on relative IRIs.
+/// assert!(Iri::parse("../bar/baz").is_err())
 /// ```
-pub type Iri<T> = ParsedIri<T, false>;
+pub type Iri<T> = ParsedIri<T, true>;
 
+/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI reference.
+///
+/// Instances of this type may be absolute or relative,
+/// unlike [`Iri`].
+///
+/// ```
+/// use oxiri::IriRef;
+///
+/// // Parse and validate base IRI
+/// let base_iri = IriRef::parse("../bar/baz").unwrap();
+///
+/// // Validate and resolve relative IRI
+/// let iri = base_iri.resolve("bat#foo").unwrap();
+/// assert_eq!(iri.into_inner(), "../bar/bat#foo");
+///
+/// // IriRef's *can* also be absolute.
+/// assert!(IriRef::parse("http://foo.com/bar/baz").is_ok())
+/// ```
+pub type IriRef<T> = ParsedIri<T, false>;
+
+/// Common implementation of [`Iri`] and [`IriRef`].
+///
+/// The `ABSOLUTE` parameter indicates whether the IRI is required to be absolute:
+/// * with `ABSOLUTE=true`, only absolute IRI references will be accepted (see [`Iri`]);
+/// * with `ABSOLUTE=false`, both absolute and relative IRI references will be accepted (see [`IriRef`]).
 #[derive(Clone, Copy)]
 pub struct ParsedIri<T, const ABSOLUTE: bool> {
     iri: T,
@@ -58,7 +89,11 @@ pub struct ParsedIri<T, const ABSOLUTE: bool> {
 }
 
 impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
-    /// Parses and validates the IRI following [RFC 3987](https://www.ietf.org/rfc/rfc3987) `IRI` syntax.
+    /// Parses and validates the IRI following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987).
+    ///
+    /// More precisely, this method will use
+    /// * the `IRI` production rule if `ABSOLUTE` is true,
+    /// * the `IRI-reference` production rule if `ABSOLUTE` is false.
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
@@ -68,22 +103,11 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// Iri::parse("http://foo.com/bar/baz").unwrap();
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let mode: ParseMode<'_> = ParseMode::Absolute;
-        let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
-        Ok(Self { iri, positions })
-    }
-
-    /// Parses and validates the IRI following [RFC 3987](https://www.ietf.org/rfc/rfc3987) `irelative-ref` syntax.
-    ///
-    /// This operation keeps internally the `iri` parameter and does not allocate.
-    ///
-    /// ```
-    /// use oxiri::Iri;
-    ///
-    /// Iri::parse("http://foo.com/bar/baz").unwrap();
-    /// ```
-    pub fn parse_relative(iri: T) -> Result<Self, IriParseError> {
-        let mode: ParseMode<'_> = ParseMode::Relative;
+        let mode: ParseMode<'_> = if ABSOLUTE {
+            ParseMode::Absolute
+        } else {
+            ParseMode::Relative
+        };
         let positions = IriParser::parse(&iri, mode, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
@@ -139,10 +163,23 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
         }
     }
 
-    /// Convert into an IRI reference (i.e. allowed to be relative).
+    /// Convert into an [`IriRef`] (i.e. allowed to be relative).
     #[inline]
-    pub fn into_iri_ref(self) -> ParsedIri<T, false> {
-        ParsedIri {
+    pub fn into_iri_ref(self) -> IriRef<T> {
+        IriRef {
+            iri: self.iri,
+            positions: self.positions,
+        }
+    }
+
+    /// Convert into an [`Iri`] (i.e. guaranteed to be absolute).
+    ///
+    /// # Pre-condition
+    /// This `ParsedIri` must be [absolute](`ParsedIri::is_absolute`).
+    #[inline]
+    pub fn into_iri_unchecked(self) -> Iri<T> {
+        debug_assert!(self.is_absolute());
+        Iri {
             iri: self.iri,
             positions: self.positions,
         }
@@ -162,19 +199,19 @@ impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
 
     /// Whether this IRI is an absolute IRI reference or not.
     ///
-    /// NB: this can only return false if this IRI was parsed with [`Iri::parse_relative`]
+    /// NB: this will always return `true` for [`Iri`]
+    /// (i.e. when the `ABSOLUTE` parameter is `true`).
     #[inline]
     pub fn is_absolute(&self) -> bool {
-        self.positions.scheme_end != 0
+        ABSOLUTE || self.positions.scheme_end != 0
     }
 
     /// Returns the IRI scheme if it exists.
     ///
     /// Beware: the scheme case is not normalized. Use case insensitive comparisons if you look for a specific scheme.
     ///
-    /// NB: only relative IRI references have no scheme
-    /// (see [`Iri::parse_relative`] and [`Iri::is_absolute`]).
-    ///
+    /// NB: this can only be `None` for [`IriRef`]
+    /// (i.e. when the `ABSOLUTE` parameter is `false).
     /// ```
     /// use oxiri::Iri;
     ///
