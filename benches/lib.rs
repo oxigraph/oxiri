@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use oxiri::Iri;
+use oxiri::{Iri, IriRef};
 
 fn abs_examples() -> &'static [&'static str] {
     &[
@@ -41,10 +41,10 @@ fn bench_iri_parse(c: &mut Criterion) {
 }
 
 fn bench_iri_parse_relative(c: &mut Criterion) {
-    c.bench_function("Iri::parse_relative", |b| {
+    c.bench_function("IriRef::parse", |b| {
         b.iter(|| {
             for iri in abs_examples().iter() {
-                Iri::parse_relative(*iri).unwrap();
+                IriRef::parse(*iri).unwrap();
             }
         })
     });
