@@ -49,13 +49,15 @@ use std::str::{Chars, FromStr};
 /// let iri = base_iri.resolve("bat#foo").unwrap();
 /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
 /// ```
+pub type Iri<T> = ParsedIri<T, false>;
+
 #[derive(Clone, Copy)]
-pub struct Iri<T> {
+pub struct ParsedIri<T, const ABSOLUTE: bool> {
     iri: T,
     positions: IriElementsPositions,
 }
 
-impl<T: Deref<Target = str>> Iri<T> {
+impl<T: Deref<Target = str>, const ABSOLUTE: bool> ParsedIri<T, ABSOLUTE> {
     /// Parses and validates the IRI following [RFC 3987](https://www.ietf.org/rfc/rfc3987) `IRI` syntax.
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
@@ -96,11 +98,11 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// let iri = base_iri.resolve("bat#foo").unwrap();
     /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
     /// ```
-    pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
+    pub fn resolve(&self, iri: &str) -> Result<ParsedIri<String, ABSOLUTE>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let mode = ParseMode::WithBase(self.as_ref());
+        let mode = ParseMode::WithBase(self.as_ref().into_iri_ref());
         let positions = IriParser::parse(iri, mode, &mut target_buffer)?;
-        Ok(Iri {
+        Ok(ParsedIri {
             iri: target_buffer,
             positions,
         })
@@ -120,15 +122,28 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(iri, ParseMode::WithBase(self.as_ref()), target_buffer)?;
+        IriParser::parse(
+            iri,
+            ParseMode::WithBase(self.as_ref().into_iri_ref()),
+            target_buffer,
+        )?;
         Ok(())
     }
 
     /// Returns an IRI borrowing this IRI's text
     #[inline]
-    pub fn as_ref(&self) -> Iri<&str> {
-        Iri {
+    pub fn as_ref(&self) -> ParsedIri<&str, ABSOLUTE> {
+        ParsedIri {
             iri: &self.iri,
+            positions: self.positions,
+        }
+    }
+
+    /// Convert into an IRI reference (i.e. allowed to be relative).
+    #[inline]
+    pub fn into_iri_ref(self) -> ParsedIri<T, false> {
+        ParsedIri {
+            iri: self.iri,
             positions: self.positions,
         }
     }
@@ -248,93 +263,95 @@ impl<T: Deref<Target = str>> Iri<T> {
     }
 }
 
-impl<Lft: PartialEq<Rhs>, Rhs> PartialEq<Iri<Rhs>> for Iri<Lft> {
+impl<Lft: PartialEq<Rhs>, Rhs, const A1: bool, const A2: bool> PartialEq<ParsedIri<Rhs, A2>>
+    for ParsedIri<Lft, A1>
+{
     #[inline]
-    fn eq(&self, other: &Iri<Rhs>) -> bool {
+    fn eq(&self, other: &ParsedIri<Rhs, A2>) -> bool {
         self.iri.eq(&other.iri)
     }
 }
 
-impl<T: PartialEq<str>> PartialEq<str> for Iri<T> {
+impl<T: PartialEq<str>, const A: bool> PartialEq<str> for ParsedIri<T, A> {
     #[inline]
     fn eq(&self, other: &str) -> bool {
         self.iri.eq(other)
     }
 }
 
-impl<'a, T: PartialEq<&'a str>> PartialEq<&'a str> for Iri<T> {
+impl<'a, T: PartialEq<&'a str>, const A: bool> PartialEq<&'a str> for ParsedIri<T, A> {
     #[inline]
     fn eq(&self, other: &&'a str) -> bool {
         self.iri.eq(other)
     }
 }
 
-impl<T: PartialEq<String>> PartialEq<String> for Iri<T> {
+impl<T: PartialEq<String>, const A: bool> PartialEq<String> for ParsedIri<T, A> {
     #[inline]
     fn eq(&self, other: &String) -> bool {
         self.iri.eq(other)
     }
 }
 
-impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Cow<'a, str>> for Iri<T> {
+impl<'a, T: PartialEq<Cow<'a, str>>, const A: bool> PartialEq<Cow<'a, str>> for ParsedIri<T, A> {
     #[inline]
     fn eq(&self, other: &Cow<'a, str>) -> bool {
         self.iri.eq(other)
     }
 }
 
-impl<T: PartialEq<str>> PartialEq<Iri<T>> for str {
+impl<T: PartialEq<str>, const A: bool> PartialEq<ParsedIri<T, A>> for str {
     #[inline]
-    fn eq(&self, other: &Iri<T>) -> bool {
+    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
         other.iri.eq(self)
     }
 }
 
-impl<'a, T: PartialEq<&'a str>> PartialEq<Iri<T>> for &'a str {
+impl<'a, T: PartialEq<&'a str>, const A: bool> PartialEq<ParsedIri<T, A>> for &'a str {
     #[inline]
-    fn eq(&self, other: &Iri<T>) -> bool {
+    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
         other.iri.eq(self)
     }
 }
 
-impl<T: PartialEq<String>> PartialEq<Iri<T>> for String {
+impl<T: PartialEq<String>, const A: bool> PartialEq<ParsedIri<T, A>> for String {
     #[inline]
-    fn eq(&self, other: &Iri<T>) -> bool {
+    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
         other.iri.eq(self)
     }
 }
 
-impl<'a, T: PartialEq<Cow<'a, str>>> PartialEq<Iri<T>> for Cow<'a, str> {
+impl<'a, T: PartialEq<Cow<'a, str>>, const A: bool> PartialEq<ParsedIri<T, A>> for Cow<'a, str> {
     #[inline]
-    fn eq(&self, other: &Iri<T>) -> bool {
+    fn eq(&self, other: &ParsedIri<T, A>) -> bool {
         other.iri.eq(self)
     }
 }
 
-impl<T: Eq> Eq for Iri<T> {}
+impl<T: Eq, const A: bool> Eq for ParsedIri<T, A> {}
 
-impl<T: Hash> Hash for Iri<T> {
+impl<T: Hash, const A: bool> Hash for ParsedIri<T, A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.iri.hash(state)
     }
 }
 
-impl<T: PartialOrd> PartialOrd for Iri<T> {
+impl<T: PartialOrd, const A: bool> PartialOrd for ParsedIri<T, A> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.iri.partial_cmp(&other.iri)
     }
 }
 
-impl<T: Ord> Ord for Iri<T> {
+impl<T: Ord, const A: bool> Ord for ParsedIri<T, A> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.iri.cmp(&other.iri)
     }
 }
 
-impl<T: Deref<Target = str>> Deref for Iri<T> {
+impl<T: Deref<Target = str>, const A: bool> Deref for ParsedIri<T, A> {
     type Target = str;
 
     #[inline]
@@ -343,35 +360,35 @@ impl<T: Deref<Target = str>> Deref for Iri<T> {
     }
 }
 
-impl<T: AsRef<str>> AsRef<str> for Iri<T> {
+impl<T: AsRef<str>, const A: bool> AsRef<str> for ParsedIri<T, A> {
     #[inline]
     fn as_ref(&self) -> &str {
         self.iri.as_ref()
     }
 }
 
-impl<T: Borrow<str>> Borrow<str> for Iri<T> {
+impl<T: Borrow<str>, const A: bool> Borrow<str> for ParsedIri<T, A> {
     #[inline]
     fn borrow(&self) -> &str {
         self.iri.borrow()
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Iri<T> {
+impl<T: fmt::Debug, const A: bool> fmt::Debug for ParsedIri<T, A> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.iri.fmt(f)
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Iri<T> {
+impl<T: fmt::Display, const A: bool> fmt::Display for ParsedIri<T, A> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.iri.fmt(f)
     }
 }
 
-impl FromStr for Iri<String> {
+impl<const A: bool> FromStr for ParsedIri<String, A> {
     type Err = IriParseError;
 
     #[inline]
@@ -380,9 +397,9 @@ impl FromStr for Iri<String> {
     }
 }
 
-impl<'a> From<Iri<&'a str>> for Iri<String> {
+impl<'a, const A: bool> From<ParsedIri<&'a str, A>> for ParsedIri<String, A> {
     #[inline]
-    fn from(iri: Iri<&'a str>) -> Self {
+    fn from(iri: ParsedIri<&'a str, A>) -> Self {
         Self {
             iri: iri.iri.into(),
             positions: iri.positions,
@@ -390,9 +407,9 @@ impl<'a> From<Iri<&'a str>> for Iri<String> {
     }
 }
 
-impl<'a> From<Iri<Cow<'a, str>>> for Iri<String> {
+impl<'a, const A: bool> From<ParsedIri<Cow<'a, str>, A>> for ParsedIri<String, A> {
     #[inline]
-    fn from(iri: Iri<Cow<'a, str>>) -> Self {
+    fn from(iri: ParsedIri<Cow<'a, str>, A>) -> Self {
         Self {
             iri: iri.iri.into(),
             positions: iri.positions,
@@ -400,9 +417,9 @@ impl<'a> From<Iri<Cow<'a, str>>> for Iri<String> {
     }
 }
 
-impl From<Iri<Box<str>>> for Iri<String> {
+impl<const A: bool> From<ParsedIri<Box<str>, A>> for ParsedIri<String, A> {
     #[inline]
-    fn from(iri: Iri<Box<str>>) -> Self {
+    fn from(iri: ParsedIri<Box<str>, A>) -> Self {
         Self {
             iri: iri.iri.into(),
             positions: iri.positions,
@@ -410,9 +427,9 @@ impl From<Iri<Box<str>>> for Iri<String> {
     }
 }
 
-impl<'a> From<Iri<&'a str>> for Iri<Cow<'a, str>> {
+impl<'a, const A: bool> From<ParsedIri<&'a str, A>> for ParsedIri<Cow<'a, str>, A> {
     #[inline]
-    fn from(iri: Iri<&'a str>) -> Self {
+    fn from(iri: ParsedIri<&'a str, A>) -> Self {
         Self {
             iri: iri.iri.into(),
             positions: iri.positions,
@@ -420,9 +437,9 @@ impl<'a> From<Iri<&'a str>> for Iri<Cow<'a, str>> {
     }
 }
 
-impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
+impl<'a, const A: bool> From<ParsedIri<String, A>> for ParsedIri<Cow<'a, str>, A> {
     #[inline]
-    fn from(iri: Iri<String>) -> Self {
+    fn from(iri: ParsedIri<String, A>) -> Self {
         Self {
             iri: iri.iri.into(),
             positions: iri.positions,
@@ -430,9 +447,9 @@ impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
     }
 }
 
-impl<'a> From<&'a Iri<String>> for Iri<&'a str> {
+impl<'a, const A: bool> From<&'a ParsedIri<String, A>> for ParsedIri<&'a str, A> {
     #[inline]
-    fn from(iri: &'a Iri<String>) -> Self {
+    fn from(iri: &'a ParsedIri<String, A>) -> Self {
         Self {
             iri: &iri.iri,
             positions: iri.positions,
@@ -440,9 +457,9 @@ impl<'a> From<&'a Iri<String>> for Iri<&'a str> {
     }
 }
 
-impl<'a> From<&'a Iri<Cow<'a, str>>> for Iri<&'a str> {
+impl<'a, const A: bool> From<&'a ParsedIri<Cow<'a, str>, A>> for ParsedIri<&'a str, A> {
     #[inline]
-    fn from(iri: &'a Iri<Cow<'a, str>>) -> Self {
+    fn from(iri: &'a ParsedIri<Cow<'a, str>, A>) -> Self {
         Self {
             iri: &iri.iri,
             positions: iri.positions,
@@ -617,7 +634,7 @@ impl<'a> ParserInput<'a> {
 enum ParseMode<'a> {
     Absolute,
     Relative,
-    WithBase(Iri<&'a str>),
+    WithBase(ParsedIri<&'a str, false>),
 }
 
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
@@ -769,7 +786,10 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
         }
     }
 
-    fn parse_relative_slash(&mut self, base: &Iri<&'a str>) -> Result<(), IriParseError> {
+    fn parse_relative_slash(
+        &mut self,
+        base: &ParsedIri<&'a str, false>,
+    ) -> Result<(), IriParseError> {
         if self.input.starts_with('/') {
             self.input.next();
             self.output.push_str(&base.iri[..base.positions.scheme_end]);
