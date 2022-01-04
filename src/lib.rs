@@ -4,10 +4,10 @@
 //! use oxiri::Iri;
 //!
 //! // Parse and validate base IRI
-//! let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
+//! let base_iri = Iri::parse("http://foo.com/bar/baz")?;
 //!
 //! // Validate and resolve relative IRI
-//! let iri = base_iri.resolve("bat#foo").unwrap();
+//! let iri = base_iri.resolve("bat#foo")?;
 //! assert_eq!(iri.as_str(), "http://foo.com/bar/bat#foo");
 //!
 //! // Extract IRI components
@@ -16,6 +16,7 @@
 //! assert_eq!(iri.path(), "/bar/bat");
 //! assert_eq!(iri.query(), None);
 //! assert_eq!(iri.fragment(), Some("foo"));
+//! # Result::<(), oxiri::IriParseError>::Ok(())
 //! ```
 #![deny(
     future_incompatible,
@@ -44,17 +45,21 @@ use std::str::{Chars, FromStr};
 /// unlike [`Iri`].
 ///
 /// ```
-/// use oxiri::IriRef;
+/// use oxiri::{Iri, IriRef};
 ///
 /// // Parse and validate base IRI
-/// let base_iri = IriRef::parse("../bar/baz").unwrap();
+/// let base_iri = IriRef::parse("../bar/baz")?;
 ///
 /// // Validate and resolve relative IRI
-/// let iri = base_iri.resolve("bat#foo").unwrap();
+/// let iri = base_iri.resolve("bat#foo")?;
 /// assert_eq!(iri.into_inner(), "../bar/bat#foo");
 ///
 /// // IriRef's *can* also be absolute.
-/// assert!(IriRef::parse("http://foo.com/bar/baz").is_ok())
+/// assert!(IriRef::parse("http://foo.com/bar/baz").is_ok());
+///
+/// // It is possible to build an IriRef from an Iri object
+/// IriRef::from(Iri::parse("http://foo.com/bar")?);
+/// # Result::<(), oxiri::IriParseError>::Ok(())
 /// ```
 #[derive(Clone, Copy)]
 pub struct IriRef<T> {
@@ -70,7 +75,8 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// IriRef::parse("//foo.com/bar/baz").unwrap();
+    /// IriRef::parse("//foo.com/bar/baz")?;
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
         let positions = IriParser::parse(&iri, None, &mut VoidOutputBuffer::default())?;
@@ -83,9 +89,10 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let base_iri = IriRef::parse("//foo.com/bar/baz").unwrap();
-    /// let iri = base_iri.resolve("bat#foo").unwrap();
+    /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
+    /// let iri = base_iri.resolve("bat#foo")?;
     /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
@@ -104,10 +111,11 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let base_iri = IriRef::parse("//foo.com/bar/baz").unwrap();
+    /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into("bat#foo", &mut result).unwrap();
+    /// let iri = base_iri.resolve_into("bat#foo", &mut result)?;
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
         IriParser::parse(iri, Some(self.as_ref()), target_buffer)?;
@@ -128,8 +136,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let iri = IriRef::parse("//example.com/foo").unwrap();
+    /// let iri = IriRef::parse("//example.com/foo")?;
     /// assert_eq!(iri.as_str(), "//example.com/foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn as_str(&self) -> &str {
@@ -141,8 +150,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let iri = IriRef::parse("//example.com/foo").unwrap();
+    /// let iri = IriRef::parse("//example.com/foo")?;
     /// assert_eq!(iri.into_inner(), "//example.com/foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn into_inner(self) -> T {
@@ -154,8 +164,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// assert!(IriRef::parse("http://example.com/foo").unwrap().is_absolute());
-    /// assert!(!IriRef::parse("/foo").unwrap().is_absolute());
+    /// assert!(IriRef::parse("http://example.com/foo")?.is_absolute());
+    /// assert!(!IriRef::parse("/foo")?.is_absolute());
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn is_absolute(&self) -> bool {
@@ -168,8 +179,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let iri = IriRef::parse("hTTp://example.com").unwrap();
+    /// let iri = IriRef::parse("hTTp://example.com")?;
     /// assert_eq!(iri.scheme(), Some("hTTp"));
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn scheme(&self) -> Option<&str> {
@@ -187,11 +199,12 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let http = IriRef::parse("http://foo:pass@example.com:80/my/path").unwrap();
+    /// let http = IriRef::parse("http://foo:pass@example.com:80/my/path")?;
     /// assert_eq!(http.authority(), Some("foo:pass@example.com:80"));
     ///
-    /// let mailto = IriRef::parse("mailto:foo@bar.com").unwrap();
+    /// let mailto = IriRef::parse("mailto:foo@bar.com")?;
     /// assert_eq!(mailto.authority(), None);
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn authority(&self) -> Option<&str> {
@@ -207,11 +220,12 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let http = IriRef::parse("http://foo:pass@example.com:80/my/path?foo=bar").unwrap();
+    /// let http = IriRef::parse("http://foo:pass@example.com:80/my/path?foo=bar")?;
     /// assert_eq!(http.path(), "/my/path");
     ///
-    /// let mailto = IriRef::parse("mailto:foo@bar.com").unwrap();
+    /// let mailto = IriRef::parse("mailto:foo@bar.com")?;
     /// assert_eq!(mailto.path(), "foo@bar.com");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn path(&self) -> &str {
@@ -223,8 +237,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let iri = IriRef::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// let iri = IriRef::parse("http://example.com/my/path?query=foo#frag")?;
     /// assert_eq!(iri.query(), Some("query=foo"));
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn query(&self) -> Option<&str> {
@@ -240,8 +255,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let iri = IriRef::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// let iri = IriRef::parse("http://example.com/my/path?query=foo#frag")?;
     /// assert_eq!(iri.fragment(), Some("frag"));
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn fragment(&self) -> Option<&str> {
@@ -461,17 +477,22 @@ impl<'a> From<&'a IriRef<Cow<'a, str>>> for IriRef<&'a str> {
 /// unlike [`IriRef`].
 ///
 /// ```
-/// use oxiri::Iri;
+/// use std::convert::TryFrom;
+/// use oxiri::{Iri, IriRef};
 ///
 /// // Parse and validate base IRI
-/// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
+/// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
 ///
 /// // Validate and resolve relative IRI
-/// let iri = base_iri.resolve("bat#foo").unwrap();
+/// let iri = base_iri.resolve("bat#foo")?;
 /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
 ///
 /// // Iri::parse will err on relative IRIs.
-/// assert!(Iri::parse("../bar/baz").is_err())
+/// assert!(Iri::parse("../bar/baz").is_err());
+///
+/// // It is possible to build an Iri from an IriRef object
+/// Iri::try_from(IriRef::parse("http://foo.com/bar")?)?;
+/// # Result::<(), oxiri::IriParseError>::Ok(())
 /// ```
 #[derive(Clone, Copy)]
 pub struct Iri<T>(IriRef<T>);
@@ -484,7 +505,8 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// Iri::parse("http://foo.com/bar/baz").unwrap();
+    /// Iri::parse("http://foo.com/bar/baz")?;
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
         IriRef::parse(iri)?.try_into()
@@ -496,9 +518,10 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
-    /// let iri = base_iri.resolve("bat#foo").unwrap();
+    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
+    /// let iri = base_iri.resolve("bat#foo")?;
     /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
         Ok(Iri(self.0.resolve(iri)?))
@@ -512,10 +535,11 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
+    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into("bat#foo", &mut result).unwrap();
+    /// let iri = base_iri.resolve_into("bat#foo", &mut result)?;
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
         self.0.resolve_into(iri, target_buffer)
@@ -532,8 +556,9 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let iri = Iri::parse("http://example.com/foo").unwrap();
+    /// let iri = Iri::parse("http://example.com/foo")?;
     /// assert_eq!(iri.as_str(), "http://example.com/foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn as_str(&self) -> &str {
@@ -545,8 +570,9 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let iri = Iri::parse("http://example.com/foo").unwrap();
+    /// let iri = Iri::parse("http://example.com/foo")?;
     /// assert_eq!(iri.into_inner(), "http://example.com/foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn into_inner(self) -> T {
@@ -560,8 +586,9 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let iri = Iri::parse("hTTp://example.com").unwrap();
+    /// let iri = Iri::parse("hTTp://example.com")?;
     /// assert_eq!(iri.scheme(), "hTTp");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn scheme(&self) -> &str {
@@ -575,11 +602,12 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let http = Iri::parse("http://foo:pass@example.com:80/my/path").unwrap();
+    /// let http = Iri::parse("http://foo:pass@example.com:80/my/path")?;
     /// assert_eq!(http.authority(), Some("foo:pass@example.com:80"));
     ///
-    /// let mailto = Iri::parse("mailto:foo@bar.com").unwrap();
+    /// let mailto = Iri::parse("mailto:foo@bar.com")?;
     /// assert_eq!(mailto.authority(), None);
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn authority(&self) -> Option<&str> {
@@ -591,11 +619,12 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let http = Iri::parse("http://foo:pass@example.com:80/my/path?foo=bar").unwrap();
+    /// let http = Iri::parse("http://foo:pass@example.com:80/my/path?foo=bar")?;
     /// assert_eq!(http.path(), "/my/path");
     ///
-    /// let mailto = Iri::parse("mailto:foo@bar.com").unwrap();
+    /// let mailto = Iri::parse("mailto:foo@bar.com")?;
     /// assert_eq!(mailto.path(), "foo@bar.com");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn path(&self) -> &str {
@@ -607,8 +636,9 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let iri = Iri::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// let iri = Iri::parse("http://example.com/my/path?query=foo#frag")?;
     /// assert_eq!(iri.query(), Some("query=foo"));
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn query(&self) -> Option<&str> {
@@ -620,8 +650,9 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let iri = Iri::parse("http://example.com/my/path?query=foo#frag").unwrap();
+    /// let iri = Iri::parse("http://example.com/my/path?query=foo#frag")?;
     /// assert_eq!(iri.fragment(), Some("frag"));
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     #[inline]
     pub fn fragment(&self) -> Option<&str> {
