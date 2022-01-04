@@ -101,6 +101,8 @@ fn test_relative_parsing() {
         "http://example.org/aaa%2fbbb#ccc",
         "http://example.org/aaa%2Fbbb#ccc",
         "%2F",
+        "?%2F",
+        "#?%2F",
         "aaa%2Fbbb",
         //-- ports
         "http://example.org:80/aaa/bbb#ccc",
@@ -178,7 +180,6 @@ fn test_wrong_relative_parsing() {
         "http://example.org/[2010:836B:4179::836B:4179]",
         "http://example.org/abc#[2010:836B:4179::836B:4179]",
         "http://example.org/xxx/[qwerty]#a[b]",
-        //
         // from a post to the W3C uri list on 2004-02-17
         "http://w3c.org:80path1/path2",
         // relative IRIs do not accept colon in the first path segment
@@ -188,6 +189,12 @@ fn test_wrong_relative_parsing() {
         "\u{E000}",
         "http://example.com/#\u{E000}",
         "#\u{E000}",
+        // bad characters
+        "//\u{FFFF}",
+        "?\u{FFFF}",
+        // bad host
+        "http://[/",
+        "http://[::1]a/",
         // fuzzing bugs
         "//͏@[]",
     ];
