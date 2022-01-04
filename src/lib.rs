@@ -1213,12 +1213,12 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
     fn parse_host(&mut self) -> Result<(), IriParseError> {
         if self.input.starts_with('[') {
             // IP v6
+            let start_position = self.input.position;
             while let Some(c) = self.input.next() {
                 self.output.push(c);
                 if c == ']' {
-                    if let Err(error) = Ipv6Addr::from_str(
-                        &self.iri[self.input_scheme_end + 3..self.input.position - 1],
-                    ) {
+                    let ip = &self.iri[start_position + 1..self.input.position - 1];
+                    if let Err(error) = Ipv6Addr::from_str(ip) {
                         return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
                     }
 

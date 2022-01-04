@@ -188,6 +188,8 @@ fn test_wrong_relative_parsing() {
         "\u{E000}",
         "http://example.com/#\u{E000}",
         "#\u{E000}",
+        // fuzzing bugs
+        "//͏@[]",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
