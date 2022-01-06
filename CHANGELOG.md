@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0] - 2021-01-06
+
+### Added
+- `IriRef` type that provides the same API as `Iri` but for relative IRIs.
+- `PartialOrder` implementations between `Iri`s with different container types.
+
+### Changed
+- Fixes path resolution: the resolver should return `tag:c-d` and not `tag:/c-d` when resolving `c-d` against `tag:a-b`.
+- Relative IRIs are not anymore allowed to start with a column `:`.
+- `iprivate` characters (`%xE000-F8FF / %xF0000-FFFFD / %x100000-10FFFD`) are not allowed anymore as part of the IRI query component following RFC 3987.
+
+
 ## [0.1.1] - 2020-07-10
 
 ### Added
@@ -10,6 +22,7 @@
 
 ### Changed
 - Bug fix in the relative IRI resolution: some character were duplicated.
+
 
 ## [0.1.0] - 2020-05-01
 
