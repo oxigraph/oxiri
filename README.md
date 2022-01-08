@@ -5,7 +5,7 @@ OxIRI
 [![Latest Version](https://img.shields.io/crates/v/oxiri.svg)](https://crates.io/crates/oxiri)
 [![Released API docs](https://docs.rs/oxiri/badge.svg)](https://docs.rs/oxiri)
 
-OxIRI is a simple and fast implementation of IRIs based on [RFC 3987](https://www.ietf.org/rfc/rfc3987).
+OxIRI is a simple and fast implementation of IRIs based on [RFC 3987](https://www.ietf.org/rfc/rfc3987.html).
 
 It allows zero stack allocation IRI validation and resolution.
 

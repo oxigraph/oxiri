@@ -1,4 +1,4 @@
-//! Utilities to validate and resolve IRIs following [RFC 3987](https://www.ietf.org/rfc/rfc3987).
+//! Utilities to validate and resolve IRIs following [RFC 3987](https://www.ietf.org/rfc/rfc3987.html).
 //!
 //! ```
 //! use oxiri::Iri;
@@ -39,7 +39,7 @@ use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
 use std::str::{Chars, FromStr};
 
-/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI reference.
+/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI reference.
 ///
 /// Instances of this type may be absolute or relative,
 /// unlike [`Iri`].
@@ -68,7 +68,7 @@ pub struct IriRef<T> {
 }
 
 impl<T: Deref<Target = str>> IriRef<T> {
-    /// Parses and validates the IRI-reference following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987).
+    /// Parses and validates the IRI-reference following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987.html).
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
@@ -84,7 +84,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     }
 
     /// Validates and resolved a relative IRI against the current IRI
-    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
+    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
     /// ```
     /// use oxiri::IriRef;
@@ -104,7 +104,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     }
 
     /// Validates and resolved a relative IRI against the current IRI
-    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
+    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
     /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
     ///
@@ -471,7 +471,7 @@ impl<'a> From<&'a IriRef<Cow<'a, str>>> for IriRef<&'a str> {
     }
 }
 
-/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987) IRI.
+/// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI.
 ///
 /// Instances of this type are guaranteed to be absolute,
 /// unlike [`IriRef`].
@@ -498,7 +498,7 @@ impl<'a> From<&'a IriRef<Cow<'a, str>>> for IriRef<&'a str> {
 pub struct Iri<T>(IriRef<T>);
 
 impl<T: Deref<Target = str>> Iri<T> {
-    /// Parses and validates the IRI following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987).
+    /// Parses and validates the IRI following the grammar from [RFC 3987](https://www.ietf.org/rfc/rfc3987.html).
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
@@ -513,7 +513,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     }
 
     /// Validates and resolved a relative IRI against the current IRI
-    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
+    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
     /// ```
     /// use oxiri::Iri;
@@ -528,7 +528,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     }
 
     /// Validates and resolved a relative IRI against the current IRI
-    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986) relative URI resolution algorithm.
+    /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
     /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
     ///
