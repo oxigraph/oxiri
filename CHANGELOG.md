@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1] - 2021-01-10
+
+### Changed
+- Fixes a regression in relative IRI parsing when there is only a host without a training slash. For example `foo` is now resolved against `http://example.org` as `http://example.org/foo` and not anymore as `http://example.orgfoo`.
+- The validation of unicode character is now carefully following RFC 3987:
+  - Some private use characters are not anymore allowed in path and fragment.
+  - Some surrogates are not allowed anymore in query.
+  - The range F900-FDEF is now allowed in path and fragment following the RFC.
+
+
 ## [0.2.0] - 2021-01-06
 
 ### Added
