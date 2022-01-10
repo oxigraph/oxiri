@@ -14,11 +14,11 @@ Example:
 use oxiri::Iri;
 
 // Parse and validate base IRI
-let base_iri = Iri::parse("http://foo.com/bar/baz")?;
+let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
 
 // Validate and resolve relative IRI
-let iri = base_iri.resolve("bat#foo")?;
-assert_eq!("http://foo.com/bar/bat#foo", iri.into_inner());
+let iri = base_iri.resolve("bat#foo").unwrap();
+assert_eq!("http://foo.com/bar/bat#foo", iri.as_str());
 
 // Extract IRI components
 assert_eq!(iri.scheme(), "http");
@@ -34,9 +34,9 @@ assert_eq!(iri.fragment(), Some("foo"));
 This project is licensed under either of
 
  * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or
-   http://www.apache.org/licenses/LICENSE-2.0)
+   `<http://www.apache.org/licenses/LICENSE-2.0>`)
  * MIT license ([LICENSE-MIT](LICENSE-MIT) or
-   http://opensource.org/licenses/MIT)
+   `<http://opensource.org/licenses/MIT>`)
    
 at your option.
 

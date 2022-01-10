@@ -1,23 +1,4 @@
-//! Utilities to validate and resolve IRIs following [RFC 3987](https://www.ietf.org/rfc/rfc3987.html).
-//!
-//! ```
-//! use oxiri::Iri;
-//!
-//! // Parse and validate base IRI
-//! let base_iri = Iri::parse("http://foo.com/bar/baz")?;
-//!
-//! // Validate and resolve relative IRI
-//! let iri = base_iri.resolve("bat#foo")?;
-//! assert_eq!(iri.as_str(), "http://foo.com/bar/bat#foo");
-//!
-//! // Extract IRI components
-//! assert_eq!(iri.scheme(), "http");
-//! assert_eq!(iri.authority(), Some("foo.com"));
-//! assert_eq!(iri.path(), "/bar/bat");
-//! assert_eq!(iri.query(), None);
-//! assert_eq!(iri.fragment(), Some("foo"));
-//! # Result::<(), oxiri::IriParseError>::Ok(())
-//! ```
+#![doc = include_str!("../README.md")]
 #![deny(
     future_incompatible,
     nonstandard_style,
