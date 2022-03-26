@@ -1,5 +1,7 @@
 #![allow(clippy::eq_op)]
 use oxiri::{Iri, IriRef};
+#[cfg(feature = "serde")]
+use serde_test::{assert_de_tokens, assert_de_tokens_error, assert_tokens, Token};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -555,4 +557,50 @@ fn hash(value: impl Hash) -> u64 {
 fn test_str() {
     let iri = Iri::parse("http://example.com").unwrap();
     assert!(iri.starts_with("http://"));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_iriref_serde_impl() {
+    assert_tokens(
+        &IriRef::parse("//example.com").unwrap(),
+        &[Token::BorrowedStr("//example.com")],
+    );
+    assert_tokens(
+        &IriRef::parse("//example.com".to_string()).unwrap(),
+        &[Token::String("//example.com")],
+    );
+    assert_de_tokens(
+        &IriRef::parse("//example.com".to_string()).unwrap(),
+        &[Token::BorrowedStr("//example.com")],
+    );
+    assert_de_tokens_error::<IriRef<String>>(
+        &[Token::String(":")],
+        "No scheme found in an absolute IRI",
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_iri_serde_impl() {
+    assert_tokens(
+        &Iri::parse("http://example.com").unwrap(),
+        &[Token::BorrowedStr("http://example.com")],
+    );
+    assert_tokens(
+        &Iri::parse("http://example.com".to_string()).unwrap(),
+        &[Token::String("http://example.com")],
+    );
+    assert_de_tokens(
+        &Iri::parse("http://example.com".to_string()).unwrap(),
+        &[Token::BorrowedStr("http://example.com")],
+    );
+    assert_de_tokens_error::<Iri<String>>(
+        &[Token::String(":")],
+        "No scheme found in an absolute IRI",
+    );
+    assert_de_tokens_error::<Iri<String>>(
+        &[Token::String("//example.com")],
+        "No scheme found in an absolute IRI",
+    );
 }

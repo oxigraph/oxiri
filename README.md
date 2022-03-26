@@ -28,6 +28,8 @@ assert_eq!(iri.query(), None);
 assert_eq!(iri.fragment(), Some("foo"));
 ```
 
+If [`serde`](https://serde.rs/) is available, `Iri` and `IriRef` implement the `Serialize` and `Deserialize` traits and encode the IRI as a string.
+
 
 ## License
 

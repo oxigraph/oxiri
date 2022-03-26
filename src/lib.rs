@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_code)]
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
@@ -443,6 +445,22 @@ impl<'a> From<&'a IriRef<Cow<'a, str>>> for IriRef<&'a str> {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<T: Serialize> Serialize for IriRef<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.iri.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for IriRef<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+
+        Self::parse(T::deserialize(deserializer)?).map_err(D::Error::custom)
+    }
+}
+
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI.
 ///
 /// Instances of this type are guaranteed to be absolute,
@@ -858,6 +876,23 @@ impl<T: Deref<Target = str>> TryFrom<IriRef<T>> for Iri<T> {
                 kind: IriParseErrorKind::NoScheme,
             })
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: Serialize> Serialize for Iri<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for Iri<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        IriRef::deserialize(deserializer)?
+            .try_into()
+            .map_err(D::Error::custom)
     }
 }
 
