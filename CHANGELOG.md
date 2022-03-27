@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2] - 2022-03-27
+
+### Added
+- `Iri` and `IriRef` now implement Serde `Serialize` and `Deserialize` traits if the `serde` crate is present.
+  The serialization is a plain string.
+
+
 ## [0.2.1] - 2021-01-10
 
 ### Changed
