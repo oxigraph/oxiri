@@ -907,12 +907,12 @@ impl fmt::Display for IriParseError {
         match &self.kind {
             IriParseErrorKind::NoScheme => write!(f, "No scheme found in an absolute IRI"),
             IriParseErrorKind::InvalidHostCharacter(c) => {
-                write!(f, "Invalid character '{}' in host", c)
+                write!(f, "Invalid character '{c}' in host")
             }
-            IriParseErrorKind::InvalidHostIp(e) => write!(f, "Invalid host IP ({})", e),
-            IriParseErrorKind::InvalidPortCharacter(c) => write!(f, "Invalid character '{}'", c),
+            IriParseErrorKind::InvalidHostIp(e) => write!(f, "Invalid host IP ({e})"),
+            IriParseErrorKind::InvalidPortCharacter(c) => write!(f, "Invalid character '{c}'"),
             IriParseErrorKind::InvalidIriCodePoint(c) => {
-                write!(f, "Invalid IRI code point '{}'", c)
+                write!(f, "Invalid IRI code point '{c}'")
             }
             IriParseErrorKind::InvalidPercentEncoding(cs) => write!(
                 f,
@@ -1366,7 +1366,7 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
                         self.output_positions.query_end = self.output.len();
                         self.output.push('#');
                         return self.parse_fragment();
-                    } else if c == None {
+                    } else if c.is_none() {
                         self.output_positions.path_end = self.output.len();
                         self.output_positions.query_end = self.output.len();
                         return Ok(());

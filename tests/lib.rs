@@ -137,7 +137,7 @@ fn test_relative_parsing() {
         if let Err(error) = IriRef::parse(*e) {
             panic!("{} on relative IRI {}", error, e);
         }
-        if let Err(error) = base.resolve(*e) {
+        if let Err(error) = base.resolve(e) {
             panic!("{} on relative IRI {}", error, e);
         }
     }
@@ -233,7 +233,7 @@ fn test_wrong_relative_parsing() {
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
     for e in examples.iter() {
-        let result = base.resolve(*e);
+        let result = base.resolve(e);
         assert!(result.is_err(), "{} is wrongly considered valid", e);
     }
 }
@@ -520,15 +520,11 @@ fn test_resolve_relative_iri() {
 
     for (relative, base, output) in examples.iter() {
         let base = Iri::parse(*base).unwrap();
-        match base.resolve(*relative) {
+        match base.resolve(relative) {
             Ok(result) => assert_eq!(
                 result.as_str(),
                 *output,
-                "Resolving of {} against {} is wrong. Found {} and expecting {}",
-                relative,
-                base,
-                result,
-                output
+                "Resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
             ),
             Err(error) => panic!(
                 "Resolving of {} against {} failed with error: {}",
