@@ -59,3 +59,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-semver-checks || true
       - run: cargo semver-checks check-release
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install typos-cli || true
+      - run: typos
