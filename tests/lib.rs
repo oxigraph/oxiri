@@ -40,6 +40,9 @@ fn test_parsing() {
         if let Err(error) = Iri::parse(*e) {
             panic!("{} on IRI {}", error, e);
         }
+        if let Err(error) = Iri::parse_unchecked(*e) {
+            panic!("{} on IRI {}", error, e);
+        }
     }
 }
 
@@ -138,6 +141,12 @@ fn test_relative_parsing() {
             panic!("{} on relative IRI {}", error, e);
         }
         if let Err(error) = base.resolve(e) {
+            panic!("{} on relative IRI {}", error, e);
+        }
+        if let Err(error) = IriRef::parse_unchecked(*e) {
+            panic!("{} on relative IRI {}", error, e);
+        }
+        if let Err(error) = base.resolve_unchecked(e) {
             panic!("{} on relative IRI {}", error, e);
         }
     }
@@ -528,6 +537,17 @@ fn test_resolve_relative_iri() {
             ),
             Err(error) => panic!(
                 "Resolving of {} against {} failed with error: {}",
+                relative, base, error
+            ),
+        }
+        match base.resolve_unchecked(relative) {
+            Ok(result) => assert_eq!(
+                result.as_str(),
+                *output,
+                "Lenient resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
+            ),
+            Err(error) => panic!(
+                "Lenient resolving of {} against {} failed with error: {}",
                 relative, base, error
             ),
         }

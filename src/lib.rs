@@ -47,6 +47,8 @@ impl<T: Deref<Target = str>> IriRef<T> {
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
+    /// Use [`parse_unchecked`](Self::parse_unchecked) if you already know the IRI is valid to get faster processing.
+    ///
     /// ```
     /// use oxiri::IriRef;
     ///
@@ -54,12 +56,27 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let positions = IriParser::parse(&iri, None, &mut VoidOutputBuffer::default())?;
+        let positions = IriParser::<_, false>::parse(&iri, None, &mut VoidOutputBuffer::default())?;
+        Ok(Self { iri, positions })
+    }
+
+    /// Variant of [`parse`](Self::parse) that assumes that the IRI is valid to skip validation.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// IriRef::parse_unchecked("//foo.com/bar/baz")?;
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// ```
+    pub fn parse_unchecked(iri: T) -> Result<Self, IriParseError> {
+        let positions = IriParser::<_, true>::parse(&iri, None, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
 
     /// Validates and resolved a relative IRI against the current IRI
     /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
+    ///
+    /// Use [`resolve_unchecked`](Self::resolve_unchecked) if you already know the IRI is valid to get faster processing.
     ///
     /// ```
     /// use oxiri::IriRef;
@@ -71,7 +88,26 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions = IriParser::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
+        let positions = IriParser::<_, false>::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
+        Ok(IriRef {
+            iri: target_buffer,
+            positions,
+        })
+    }
+
+    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
+    /// let iri = base_iri.resolve_unchecked("bat#foo")?;
+    /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// ```
+    pub fn resolve_unchecked(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
+        let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
+        let positions = IriParser::<_, true>::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
         Ok(IriRef {
             iri: target_buffer,
             positions,
@@ -83,6 +119,8 @@ impl<T: Deref<Target = str>> IriRef<T> {
     ///
     /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
     ///
+    /// Use [`resolve_into_unchecked`](Self::resolve_into_unchecked) if you already know the IRI is valid to get faster processing.
+    ///
     /// ```
     /// use oxiri::IriRef;
     ///
@@ -93,7 +131,27 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::parse(iri, Some(self.as_ref()), target_buffer)?;
+        IriParser::<_, false>::parse(iri, Some(self.as_ref()), target_buffer)?;
+        Ok(())
+    }
+
+    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    ///
+    /// ```
+    /// use oxiri::IriRef;
+    ///
+    /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
+    /// let mut result = String::default();
+    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result)?;
+    /// assert_eq!(result, "//foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// ```
+    pub fn resolve_into_unchecked(
+        &self,
+        iri: &str,
+        target_buffer: &mut String,
+    ) -> Result<(), IriParseError> {
+        IriParser::<_, true>::parse(iri, Some(self.as_ref()), target_buffer)?;
         Ok(())
     }
 
@@ -493,6 +551,8 @@ impl<T: Deref<Target = str>> Iri<T> {
     ///
     /// This operation keeps internally the `iri` parameter and does not allocate.
     ///
+    /// Use [`parse_unchecked`](Self::parse_unchecked) if you already know the IRI is valid to get faster processing.
+    ///
     /// ```
     /// use oxiri::Iri;
     ///
@@ -503,8 +563,22 @@ impl<T: Deref<Target = str>> Iri<T> {
         IriRef::parse(iri)?.try_into()
     }
 
+    /// Variant of [`parse`](Self::parse) that assumes that the IRI is valid to skip validation.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// Iri::parse_unchecked("http://foo.com/bar/baz")?;
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// ```
+    pub fn parse_unchecked(iri: T) -> Result<Self, IriParseError> {
+        IriRef::parse_unchecked(iri)?.try_into()
+    }
+
     /// Validates and resolved a relative IRI against the current IRI
     /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
+    ///
+    /// Use [`resolve_unchecked`](Self::resolve_unchecked) if you already know the IRI is valid to get faster processing.
     ///
     /// ```
     /// use oxiri::Iri;
@@ -518,10 +592,26 @@ impl<T: Deref<Target = str>> Iri<T> {
         Ok(Iri(self.0.resolve(iri)?))
     }
 
+    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
+    /// let iri = base_iri.resolve_unchecked("bat#foo")?;
+    /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// ```
+    pub fn resolve_unchecked(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
+        Ok(Iri(self.0.resolve_unchecked(iri)?))
+    }
+
     /// Validates and resolved a relative IRI against the current IRI
     /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
     /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
+    ///
+    /// Use [`resolve_into_unchecked`](Self::resolve_into_unchecked) if you already know the IRI is valid to get faster processing.
     ///
     /// ```
     /// use oxiri::Iri;
@@ -534,6 +624,25 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
         self.0.resolve_into(iri, target_buffer)
+    }
+
+    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
+    /// let mut result = String::default();
+    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result)?;
+    /// assert_eq!(result, "http://foo.com/bar/bat#foo");
+    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// ```
+    pub fn resolve_into_unchecked(
+        &self,
+        iri: &str,
+        target_buffer: &mut String,
+    ) -> Result<(), IriParseError> {
+        self.0.resolve_into_unchecked(iri, target_buffer)
     }
 
     /// Returns an IRI borrowing this IRI's text
@@ -1039,6 +1148,7 @@ struct ParserInput<'a> {
     value: Chars<'a>,
     position: usize,
 }
+
 impl<'a> ParserInput<'a> {
     #[inline]
     fn next(&mut self) -> Option<char> {
@@ -1064,7 +1174,7 @@ impl<'a> ParserInput<'a> {
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
 ///
 /// A sub function takes care of each state
-struct IriParser<'a, O: OutputBuffer> {
+struct IriParser<'a, O: OutputBuffer, const UNCHECKED: bool> {
     iri: &'a str,
     base: Option<IriRef<&'a str>>,
     input: ParserInput<'a>,
@@ -1073,7 +1183,7 @@ struct IriParser<'a, O: OutputBuffer> {
     input_scheme_end: usize,
 }
 
-impl<'a, O: OutputBuffer> IriParser<'a, O> {
+impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     fn parse(
         iri: &'a str,
         base: Option<IriRef<&'a str>>,
@@ -1261,8 +1371,10 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
                 self.output.push(c);
                 if c == ']' {
                     let ip = &self.iri[start_position + 1..self.input.position - 1];
-                    if let Err(error) = Ipv6Addr::from_str(ip) {
-                        return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
+                    if !UNCHECKED {
+                        if let Err(error) = Ipv6Addr::from_str(ip) {
+                            return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
+                        }
                     }
 
                     let c = self.input.next();
@@ -1407,28 +1519,31 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
             .truncate(last_slash_position + self.output_positions.authority_end)
     }
 
+    #[inline]
     fn read_url_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
-        if c == '%' {
-            self.read_echar()
-        } else if is_url_code_point(c) {
+        if UNCHECKED || is_url_code_point(c) {
             self.output.push(c);
             Ok(())
+        } else if c == '%' {
+            self.read_echar()
         } else {
             self.parse_error(IriParseErrorKind::InvalidIriCodePoint(c))
         }
     }
 
+    #[inline]
     fn read_url_query_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
-        if c == '%' {
-            self.read_echar()
-        } else if is_url_query_code_point(c) {
+        if UNCHECKED || is_url_query_code_point(c) {
             self.output.push(c);
             Ok(())
+        } else if c == '%' {
+            self.read_echar()
         } else {
             self.parse_error(IriParseErrorKind::InvalidIriCodePoint(c))
         }
     }
 
+    #[inline]
     fn read_echar(&mut self) -> Result<(), IriParseError> {
         let c1 = self.input.next();
         let c2 = self.input.next();
@@ -1448,11 +1563,13 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
         }
     }
 
+    #[inline]
     fn parse_error<T>(&self, kind: IriParseErrorKind) -> Result<T, IriParseError> {
         Err(IriParseError { kind })
     }
 }
 
+#[inline]
 fn is_url_code_point(c: char) -> bool {
     matches!(c,
         'a'..='z'
@@ -1497,6 +1614,7 @@ fn is_url_code_point(c: char) -> bool {
     )
 }
 
+#[inline]
 fn is_url_query_code_point(c: char) -> bool {
     is_url_code_point(c)
         || matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
