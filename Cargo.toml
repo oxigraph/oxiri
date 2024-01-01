@@ -10,14 +10,14 @@ repository = "https://github.com/oxigraph/oxiri"
 description = """
 Simple and fast implementation of IRI validation and relative IRI resolution
 """
-edition = "2018"
-rust-version = "1.58"
+edition = "2021"
+rust-version = "1.60"
 
 [dependencies]
 serde = { version = "1", optional = true }
 
 [dev-dependencies]
-criterion = "0.4"
+codspeed-criterion-compat = "2.3.3"
 serde_test = "1"
 
 [[bench]]

@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use codspeed_criterion_compat::{criterion_group, criterion_main, Criterion};
 use oxiri::{Iri, IriRef};
 
 fn abs_examples() -> &'static [&'static str] {
@@ -30,7 +30,7 @@ fn abs_examples() -> &'static [&'static str] {
     ]
 }
 
-fn bench_iri_parse(c: &mut Criterion) {
+fn iri_parse(c: &mut Criterion) {
     c.bench_function("Iri::parse", |b| {
         b.iter(|| {
             for iri in abs_examples().iter() {
@@ -40,7 +40,7 @@ fn bench_iri_parse(c: &mut Criterion) {
     });
 }
 
-fn bench_iri_parse_relative(c: &mut Criterion) {
+fn iri_parse_relative(c: &mut Criterion) {
     c.bench_function("IriRef::parse", |b| {
         b.iter(|| {
             for iri in abs_examples().iter() {
@@ -50,7 +50,7 @@ fn bench_iri_parse_relative(c: &mut Criterion) {
     });
 }
 
-fn bench_iri_resolve(c: &mut Criterion) {
+fn iri_resolve(c: &mut Criterion) {
     let examples = [
         "g:h",
         "g",
@@ -110,11 +110,6 @@ fn bench_iri_resolve(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    iri,
-    bench_iri_parse,
-    bench_iri_parse_relative,
-    bench_iri_resolve
-);
+criterion_group!(iri, iri_parse, iri_parse_relative, iri_resolve);
 
 criterion_main!(iri);
