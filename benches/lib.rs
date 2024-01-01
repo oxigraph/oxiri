@@ -38,6 +38,13 @@ fn iri_parse(c: &mut Criterion) {
             }
         })
     });
+    c.bench_function("Iri::parse_unchecked", |b| {
+        b.iter(|| {
+            for iri in abs_examples().iter() {
+                Iri::parse_unchecked(*iri).unwrap();
+            }
+        })
+    });
 }
 
 fn iri_parse_relative(c: &mut Criterion) {
@@ -45,6 +52,13 @@ fn iri_parse_relative(c: &mut Criterion) {
         b.iter(|| {
             for iri in abs_examples().iter() {
                 IriRef::parse(*iri).unwrap();
+            }
+        })
+    });
+    c.bench_function("IriRef::parse_unchecked", |b| {
+        b.iter(|| {
+            for iri in abs_examples().iter() {
+                IriRef::parse_unchecked(*iri).unwrap();
             }
         })
     });
@@ -105,6 +119,14 @@ fn iri_resolve(c: &mut Criterion) {
             for relative in examples.iter() {
                 buf.clear();
                 base.resolve_into(relative, &mut buf).unwrap();
+            }
+        })
+    });
+    c.bench_function("Iri::resolve_into_unchecked", |b| {
+        b.iter(|| {
+            for relative in examples.iter() {
+                buf.clear();
+                base.resolve_into_unchecked(relative, &mut buf).unwrap();
             }
         })
     });
