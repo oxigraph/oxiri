@@ -1,6 +1,14 @@
 name: build
 
-on: [ push, pull_request ]
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "12 3 * * *"
 
 jobs:
   fmt:
@@ -23,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: rustup update && rustup override set 1.58.0 && rustup component add clippy
+      - run: rustup update && rustup override set 1.70.0 && rustup component add clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings -D clippy::all
       - run: cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
@@ -52,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: rustup update && rustup override set 1.58.0
+      - run: rustup update && rustup override set 1.70.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --all-features --no-deps
         env:
@@ -85,3 +93,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install typos-cli || true
       - run: typos
+
+  codspeed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: rustup update
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-codspeed || true
+      - run: cargo codspeed build
+      - uses: CodSpeedHQ/action@v2
+        with:
+          run: cargo codspeed run
+          token: ${{ secrets.CODSPEED_TOKEN }}

@@ -1407,7 +1407,6 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
             .truncate(last_slash_position + self.output_positions.authority_end)
     }
 
-    #[inline]
     fn read_url_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
         if c == '%' {
             self.read_echar()
@@ -1419,7 +1418,6 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
         }
     }
 
-    #[inline]
     fn read_url_query_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
         if c == '%' {
             self.read_echar()
@@ -1431,7 +1429,6 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
         }
     }
 
-    #[inline]
     fn read_echar(&mut self) -> Result<(), IriParseError> {
         let c1 = self.input.next();
         let c2 = self.input.next();
@@ -1451,7 +1448,6 @@ impl<'a, O: OutputBuffer> IriParser<'a, O> {
         }
     }
 
-    #[inline]
     fn parse_error<T>(&self, kind: IriParseErrorKind) -> Result<T, IriParseError> {
         Err(IriParseError { kind })
     }
