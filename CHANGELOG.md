@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.3-alpha.1] - 2024-01-02
+
+### Added
+- `_unchecked` methods for faster parsing/resolving if the IRI is known to be valid.
+
+
 ## [0.2.2] - 2022-03-27
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "oxiri"
-version = "0.2.2"
+version = "0.2.3-alpha.1"
 authors = ["Tpt <thomas@pellissier-tanon.fr>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
@@ -14,7 +14,7 @@ edition = "2021"
 rust-version = "1.60"
 
 [dependencies]
-serde = { version = "1", optional = true }
+serde = { version = "1.0.166", optional = true }
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.3.3"
