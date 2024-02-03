@@ -37,11 +37,10 @@ fn test_parsing() {
     ];
 
     for e in examples.iter() {
-        if let Err(error) = Iri::parse(*e) {
-            panic!("{} on IRI {}", error, e);
-        }
-        if let Err(error) = Iri::parse_unchecked(*e) {
-            panic!("{} on IRI {}", error, e);
+        let unchecked = Iri::parse_unchecked(*e);
+        match Iri::parse(*e) {
+            Ok(iri) => assert_eq!(iri, unchecked),
+            Err(error) => panic!("{} on IRI {}", error, e),
         }
     }
 }
@@ -137,17 +136,14 @@ fn test_relative_parsing() {
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
     for e in examples.iter() {
-        if let Err(error) = IriRef::parse(*e) {
-            panic!("{} on relative IRI {}", error, e);
+        let unchecked = IriRef::parse_unchecked(*e);
+        match IriRef::parse(*e) {
+            Ok(iri) => assert_eq!(unchecked, iri),
+            Err(error) => panic!("{} on relative IRI {}", error, e),
         }
-        if let Err(error) = base.resolve(e) {
-            panic!("{} on relative IRI {}", error, e);
-        }
-        if let Err(error) = IriRef::parse_unchecked(*e) {
-            panic!("{} on relative IRI {}", error, e);
-        }
-        if let Err(error) = base.resolve_unchecked(e) {
-            panic!("{} on relative IRI {}", error, e);
+        match base.resolve(e) {
+            Ok(iri) => assert_eq!(base.resolve_unchecked(e), iri),
+            Err(error) => panic!("{} on relative IRI {}", error, e),
         }
     }
 }
@@ -540,17 +536,12 @@ fn test_resolve_relative_iri() {
                 relative, base, error
             ),
         }
-        match base.resolve_unchecked(relative) {
-            Ok(result) => assert_eq!(
-                result.as_str(),
-                *output,
-                "Lenient resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
-            ),
-            Err(error) => panic!(
-                "Lenient resolving of {} against {} failed with error: {}",
-                relative, base, error
-            ),
-        }
+        let result = base.resolve_unchecked(relative);
+        assert_eq!(
+            result.as_str(),
+            *output,
+            "Lenient resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
+        );
     }
 }
 

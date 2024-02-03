@@ -6,12 +6,15 @@ use std::str;
 fuzz_target!(|data: &[u8]| {
     let base = IriRef::parse("http://a/b/c/d;p?q").unwrap();
     if let Ok(s) = str::from_utf8(data) {
-        let valid_result = base.resolve(s);
-
-        // We check that unchecked resolving gives the same result
-        let unchecked_result = base.resolve_unchecked(s);
-        if let Ok(valid) = valid_result {
-            assert_eq!(valid, unchecked_result.unwrap());
+        let unchecked = base.resolve_unchecked(s);
+        if let Ok(valid) = base.resolve(s) {
+            // We check that unchecked resolving gives the same result
+            assert_eq!(valid, unchecked);
+            assert_eq!(valid.scheme(), unchecked.scheme());
+            assert_eq!(valid.authority(), unchecked.authority());
+            assert_eq!(valid.path(), unchecked.path());
+            assert_eq!(valid.query(), unchecked.query());
+            assert_eq!(valid.fragment(), unchecked.fragment());
         }
     }
 });
