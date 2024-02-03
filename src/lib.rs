@@ -65,12 +65,12 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// IriRef::parse_unchecked("//foo.com/bar/baz")?;
-    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// IriRef::parse_unchecked("//foo.com/bar/baz");
     /// ```
-    pub fn parse_unchecked(iri: T) -> Result<Self, IriParseError> {
-        let positions = IriParser::<_, true>::parse(&iri, None, &mut VoidOutputBuffer::default())?;
-        Ok(Self { iri, positions })
+    pub fn parse_unchecked(iri: T) -> Self {
+        let positions =
+            IriParser::<_, true>::parse(&iri, None, &mut VoidOutputBuffer::default()).unwrap();
+        Self { iri, positions }
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -95,23 +95,23 @@ impl<T: Deref<Target = str>> IriRef<T> {
         })
     }
 
-    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation.
     ///
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
-    /// let iri = base_iri.resolve_unchecked("bat#foo")?;
+    /// let base_iri = IriRef::parse_unchecked("//foo.com/bar/baz");
+    /// let iri = base_iri.resolve_unchecked("bat#foo");
     /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
-    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve_unchecked(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
+    pub fn resolve_unchecked(&self, iri: &str) -> IriRef<String> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions = IriParser::<_, true>::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
-        Ok(IriRef {
+        let positions =
+            IriParser::<_, true>::parse(iri, Some(self.as_ref()), &mut target_buffer).unwrap();
+        IriRef {
             iri: target_buffer,
             positions,
-        })
+        }
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -135,24 +135,18 @@ impl<T: Deref<Target = str>> IriRef<T> {
         Ok(())
     }
 
-    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation.
     ///
     /// ```
     /// use oxiri::IriRef;
     ///
-    /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
+    /// let base_iri = IriRef::parse_unchecked("//foo.com/bar/baz");
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result)?;
+    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result);
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
-    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve_into_unchecked(
-        &self,
-        iri: &str,
-        target_buffer: &mut String,
-    ) -> Result<(), IriParseError> {
-        IriParser::<_, true>::parse(iri, Some(self.as_ref()), target_buffer)?;
-        Ok(())
+    pub fn resolve_into_unchecked(&self, iri: &str, target_buffer: &mut String) {
+        IriParser::<_, true>::parse(iri, Some(self.as_ref()), target_buffer).unwrap();
     }
 
     /// Returns an `IriRef` borrowing this IRI's text.
@@ -568,11 +562,10 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// ```
     /// use oxiri::Iri;
     ///
-    /// Iri::parse_unchecked("http://foo.com/bar/baz")?;
-    /// # Result::<(), oxiri::IriParseError>::Ok(())
+    /// Iri::parse_unchecked("http://foo.com/bar/baz");
     /// ```
-    pub fn parse_unchecked(iri: T) -> Result<Self, IriParseError> {
-        IriRef::parse_unchecked(iri)?.try_into()
+    pub fn parse_unchecked(iri: T) -> Self {
+        Iri(IriRef::parse_unchecked(iri))
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -592,18 +585,17 @@ impl<T: Deref<Target = str>> Iri<T> {
         Ok(Iri(self.0.resolve(iri)?))
     }
 
-    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation.
     ///
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
-    /// let iri = base_iri.resolve_unchecked("bat#foo")?;
+    /// let base_iri = Iri::parse_unchecked("http://foo.com/bar/baz");
+    /// let iri = base_iri.resolve_unchecked("bat#foo");
     /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
-    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve_unchecked(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
-        Ok(Iri(self.0.resolve_unchecked(iri)?))
+    pub fn resolve_unchecked(&self, iri: &str) -> Iri<String> {
+        Iri(self.0.resolve_unchecked(iri))
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -626,22 +618,17 @@ impl<T: Deref<Target = str>> Iri<T> {
         self.0.resolve_into(iri, target_buffer)
     }
 
-    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation not useful for relative IRI resolving.
+    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation.
     ///
     /// ```
     /// use oxiri::Iri;
     ///
-    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
+    /// let base_iri = Iri::parse_unchecked("http://foo.com/bar/baz");
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result)?;
+    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result);
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
-    /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve_into_unchecked(
-        &self,
-        iri: &str,
-        target_buffer: &mut String,
-    ) -> Result<(), IriParseError> {
+    pub fn resolve_into_unchecked(&self, iri: &str, target_buffer: &mut String) {
         self.0.resolve_into_unchecked(iri, target_buffer)
     }
 
@@ -1211,7 +1198,13 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
 
     fn parse_scheme_start(&mut self) -> Result<(), IriParseError> {
         match self.input.front() {
-            Some(':') => self.parse_error(IriParseErrorKind::NoScheme),
+            Some(':') => {
+                if UNCHECKED {
+                    self.parse_scheme()
+                } else {
+                    self.parse_error(IriParseErrorKind::NoScheme)
+                }
+            }
             Some(c) if c.is_ascii_alphabetic() => self.parse_scheme(),
             _ => self.parse_relative(),
         }
@@ -1387,11 +1380,24 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                             self.output_positions.authority_end = self.output.len();
                             self.parse_path_start(c)
                         }
-                        Some(c) => self.parse_error(IriParseErrorKind::InvalidHostCharacter(c)),
+                        Some(c) => {
+                            if UNCHECKED {
+                                self.output.push(c);
+                                continue;
+                            } else {
+                                self.parse_error(IriParseErrorKind::InvalidHostCharacter(c))
+                            }
+                        }
                     };
                 }
             }
-            self.parse_error(IriParseErrorKind::InvalidHostCharacter('['))
+            if UNCHECKED {
+                // We consider it's valid even if it's not finished
+                self.output_positions.authority_end = self.output.len();
+                self.parse_path_start(None)
+            } else {
+                self.parse_error(IriParseErrorKind::InvalidHostCharacter('['))
+            }
         } else {
             // Other host
             loop {
@@ -1415,12 +1421,17 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         loop {
             let c = self.input.next();
             match c {
-                Some(c) if c.is_ascii_digit() => self.output.push(c),
                 Some('/') | Some('?') | Some('#') | None => {
                     self.output_positions.authority_end = self.output.len();
                     return self.parse_path_start(c);
                 }
-                Some(c) => return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c)),
+                Some(c) => {
+                    if UNCHECKED || c.is_ascii_digit() {
+                        self.output.push(c)
+                    } else {
+                        return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c));
+                    }
+                }
             }
         }
     }

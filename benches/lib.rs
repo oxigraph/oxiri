@@ -41,7 +41,7 @@ fn iri_parse(c: &mut Criterion) {
     c.bench_function("Iri::parse_unchecked", |b| {
         b.iter(|| {
             for iri in abs_examples().iter() {
-                Iri::parse_unchecked(*iri).unwrap();
+                Iri::parse_unchecked(*iri);
             }
         })
     });
@@ -58,7 +58,7 @@ fn iri_parse_relative(c: &mut Criterion) {
     c.bench_function("IriRef::parse_unchecked", |b| {
         b.iter(|| {
             for iri in abs_examples().iter() {
-                IriRef::parse_unchecked(*iri).unwrap();
+                IriRef::parse_unchecked(*iri);
             }
         })
     });
@@ -126,7 +126,7 @@ fn iri_resolve(c: &mut Criterion) {
         b.iter(|| {
             for relative in examples.iter() {
                 buf.clear();
-                base.resolve_into_unchecked(relative, &mut buf).unwrap();
+                base.resolve_into_unchecked(relative, &mut buf);
             }
         })
     });
