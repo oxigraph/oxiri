@@ -19,6 +19,7 @@ serde = { version = "1.0.166", optional = true }
 [dev-dependencies]
 codspeed-criterion-compat = "2.3.3"
 serde_test = "1"
+clap = "4"
 
 [[bench]]
 name = "lib"
