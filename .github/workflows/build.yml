@@ -62,8 +62,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup update
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-deny || true
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-deny }
       - run: cargo deny check
 
   semver_checks:
@@ -74,15 +74,16 @@ jobs:
           submodules: true
       - run: rustup update
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-semver-checks || true
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-semver-checks }
       - run: cargo semver-checks check-release
 
   typos:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo install typos-cli || true
+      - uses: taiki-e/install-action@v2
+        with: { tool: typos-cli }
       - run: typos
 
   codspeed:
@@ -111,7 +112,23 @@ jobs:
           submodules: true
       - run: rustup update && rustup toolchain install nightly
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-fuzz || true
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-fuzz }
       - run: python3 build_corpus.py
         working-directory: ./fuzz
       - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=200 -max_len=64
+
+  codecov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: rustup update
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-llvm-cov }
+      - run: cargo llvm-cov --codecov --output-path codecov.json
+      - uses: codecov/codecov-action@v3
+        with:
+          files: codecov.json
+          flags: rust
