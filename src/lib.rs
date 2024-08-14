@@ -1297,7 +1297,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                         // We have some path or authority, we keep a base '/'
                         self.output.push('/');
                     }
-                    self.parse_path()
+                    self.parse_relative_path()
                 }
             }
         } else {
@@ -1309,9 +1309,20 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 self.parse_path_or_authority()
             } else {
                 self.output_positions.authority_end = 0;
-                self.parse_path()
+                self.parse_relative_path()
             }
         }
+    }
+
+    fn parse_relative_path(&mut self) -> Result<(), IriParseError> {
+        while let Some(c) = self.input.front() {
+            if matches!(c, '/' | '?' | '#') {
+                break;
+            }
+            self.input.next();
+            self.read_url_codepoint_or_echar(c, |c| is_iunreserved_or_sub_delims(c) || c == '@')?;
+        }
+        self.parse_path()
     }
 
     fn parse_relative_slash(&mut self, base: &IriRef<&'a str>) -> Result<(), IriParseError> {
@@ -1350,7 +1361,9 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     return self.parse_host();
                 }
                 Some(c) => {
-                    self.read_url_codepoint_or_echar(c)?;
+                    self.read_url_codepoint_or_echar(c, |c| {
+                        is_iunreserved_or_sub_delims(c) || c == ':'
+                    })?;
                 }
             }
         }
@@ -1411,7 +1424,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                         self.output_positions.authority_end = self.output.len();
                         return self.parse_path_start(c);
                     }
-                    Some(c) => self.read_url_codepoint_or_echar(c)?,
+                    Some(c) => self.read_url_codepoint_or_echar(c, is_iunreserved_or_sub_delims)?,
                 }
             }
         }
@@ -1459,7 +1472,9 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 self.parse_path()
             }
             Some(c) => {
-                self.read_url_codepoint_or_echar(c)?;
+                self.read_url_codepoint_or_echar(c, |c| {
+                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
+                })?;
                 self.parse_path()
             }
         }
@@ -1496,7 +1511,9 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                         return Ok(());
                     }
                 }
-                Some(c) => self.read_url_codepoint_or_echar(c)?,
+                Some(c) => self.read_url_codepoint_or_echar(c, |c| {
+                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
+                })?,
             }
         }
     }
@@ -1508,7 +1525,9 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 self.output.push('#');
                 return self.parse_fragment();
             } else {
-                self.read_url_query_codepoint_or_echar(c)?
+                self.read_url_codepoint_or_echar(c, |c| {
+                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?' | '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
+                })?
             }
         }
         self.output_positions.query_end = self.output.len();
@@ -1517,7 +1536,9 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
 
     fn parse_fragment(&mut self) -> Result<(), IriParseError> {
         while let Some(c) = self.input.next() {
-            self.read_url_codepoint_or_echar(c)?
+            self.read_url_codepoint_or_echar(c, |c| {
+                is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?')
+            })?;
         }
         Ok(())
     }
@@ -1530,9 +1551,12 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             .truncate(last_slash_position + self.output_positions.authority_end)
     }
 
-    #[inline]
-    fn read_url_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
-        if UNCHECKED || is_url_code_point(c) {
+    fn read_url_codepoint_or_echar(
+        &mut self,
+        c: char,
+        valid: impl Fn(char) -> bool,
+    ) -> Result<(), IriParseError> {
+        if UNCHECKED || valid(c) {
             self.output.push(c);
             Ok(())
         } else if c == '%' {
@@ -1542,19 +1566,6 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         }
     }
 
-    #[inline]
-    fn read_url_query_codepoint_or_echar(&mut self, c: char) -> Result<(), IriParseError> {
-        if UNCHECKED || is_url_query_code_point(c) {
-            self.output.push(c);
-            Ok(())
-        } else if c == '%' {
-            self.read_echar()
-        } else {
-            self.parse_error(IriParseErrorKind::InvalidIriCodePoint(c))
-        }
-    }
-
-    #[inline]
     fn read_echar(&mut self) -> Result<(), IriParseError> {
         let c1 = self.input.next();
         let c2 = self.input.next();
@@ -1574,14 +1585,12 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         }
     }
 
-    #[inline]
     fn parse_error<T>(&self, kind: IriParseErrorKind) -> Result<T, IriParseError> {
         Err(IriParseError { kind })
     }
 }
 
-#[inline]
-fn is_url_code_point(c: char) -> bool {
+fn is_iunreserved_or_sub_delims(c: char) -> bool {
     matches!(c,
         'a'..='z'
         | 'A'..='Z'
@@ -1597,12 +1606,8 @@ fn is_url_code_point(c: char) -> bool {
         | ','
         | '-'
         | '.'
-        | '/'
-        | ':'
         | ';'
         | '='
-        | '?'
-        | '@'
         | '_'
         | '~'
         | '\u{A0}'..='\u{D7FF}'
@@ -1623,10 +1628,4 @@ fn is_url_code_point(c: char) -> bool {
         | '\u{D0000}'..='\u{DFFFD}'
         | '\u{E1000}'..='\u{EFFFD}'
     )
-}
-
-#[inline]
-fn is_url_query_code_point(c: char) -> bool {
-    is_url_code_point(c)
-        || matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
 }
