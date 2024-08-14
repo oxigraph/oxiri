@@ -39,7 +39,14 @@ fn test_parsing() {
     for e in examples.iter() {
         let unchecked = Iri::parse_unchecked(*e);
         match Iri::parse(*e) {
-            Ok(iri) => assert_eq!(iri, unchecked),
+            Ok(iri) => {
+                assert_eq!(unchecked, iri);
+                assert_eq!(unchecked.scheme(), iri.scheme());
+                assert_eq!(unchecked.authority(), iri.authority());
+                assert_eq!(unchecked.path(), iri.path());
+                assert_eq!(unchecked.query(), iri.query());
+                assert_eq!(unchecked.fragment(), iri.fragment());
+            }
             Err(error) => panic!("{} on IRI {}", error, e),
         }
     }
@@ -138,7 +145,14 @@ fn test_relative_parsing() {
     for e in examples.iter() {
         let unchecked = IriRef::parse_unchecked(*e);
         match IriRef::parse(*e) {
-            Ok(iri) => assert_eq!(unchecked, iri),
+            Ok(iri) => {
+                assert_eq!(unchecked, iri);
+                assert_eq!(unchecked.scheme(), iri.scheme());
+                assert_eq!(unchecked.authority(), iri.authority());
+                assert_eq!(unchecked.path(), iri.path());
+                assert_eq!(unchecked.query(), iri.query());
+                assert_eq!(unchecked.fragment(), iri.fragment());
+            }
             Err(error) => panic!("{} on relative IRI {}", error, e),
         }
         match base.resolve(e) {
@@ -234,6 +248,9 @@ fn test_wrong_relative_parsing() {
         "http://[::1]a/",
         // fuzzing bugs
         "//͏@[]",
+        "//@@",
+        "$:",
+        "-:",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
