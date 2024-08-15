@@ -33,7 +33,8 @@ fn test_parsing() {
         "http://example.com/foo/bar/?q=1&r=2#toto",
         "http://example.com/foo/bar/.././baz",
         "http://a.example/AZaz\u{00C0}\u{00D6}\u{00D8}\u{00F6}\u{00F8}\u{02FF}\u{0370}\u{037D}\u{037F}\u{1FFF}\u{200C}\u{200D}\u{2070}\u{218F}\u{2C00}\u{2FEF}\u{3001}\u{D7FF}\u{FA0E}\u{FDCF}\u{FDF0}\u{FFEF}\u{10000}\u{EFFFD}",
-        "http://a.example/?AZaz\u{E000}\u{F8FF}\u{F0000}\u{FFFFD}\u{100000}\u{10FFFD}\u{00C0}\u{00D6}\u{00D8}\u{00F6}\u{00F8}\u{02FF}\u{0370}\u{037D}\u{037F}\u{1FFF}\u{200C}\u{200D}\u{2070}\u{218F}\u{2C00}\u{2FEF}\u{3001}\u{D7FF}\u{FA0E}\u{FDCF}\u{FDF0}\u{FFEF}\u{10000}\u{EFFFD}"
+        "http://a.example/?AZaz\u{E000}\u{F8FF}\u{F0000}\u{FFFFD}\u{100000}\u{10FFFD}\u{00C0}\u{00D6}\u{00D8}\u{00F6}\u{00F8}\u{02FF}\u{0370}\u{037D}\u{037F}\u{1FFF}\u{200C}\u{200D}\u{2070}\u{218F}\u{2C00}\u{2FEF}\u{3001}\u{D7FF}\u{FA0E}\u{FDCF}\u{FDF0}\u{FFEF}\u{10000}\u{EFFFD}",
+        "http://[va.12z]"
     ];
 
     for e in examples.iter() {
@@ -251,6 +252,14 @@ fn test_wrong_relative_parsing() {
         "//@@",
         "$:",
         "-:",
+        // IPvFuture
+        "http://[]",
+        "http://[a]",
+        "http://[vz]",
+        "http://[v11]",
+        "http://[v1.]",
+        "http://[v1.@]",
+        "http://[v1.%01]",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
