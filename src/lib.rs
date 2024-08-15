@@ -1378,7 +1378,9 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 if c == ']' {
                     let ip = &self.iri[start_position + 1..self.input.position - 1];
                     if !UNCHECKED {
-                        if let Err(error) = Ipv6Addr::from_str(ip) {
+                        if ip.starts_with('v') {
+                            self.validate_ip_v_future(ip)?;
+                        } else if let Err(error) = Ipv6Addr::from_str(ip) {
                             return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
                         }
                     }
@@ -1587,6 +1589,43 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
 
     fn parse_error<T>(&self, kind: IriParseErrorKind) -> Result<T, IriParseError> {
         Err(IriParseError { kind })
+    }
+
+    // IPvFuture      = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
+    fn validate_ip_v_future(&self, ip: &str) -> Result<(), IriParseError> {
+        let mut chars = ip.chars();
+
+        let c = chars.next().ok_or(IriParseError {
+            kind: IriParseErrorKind::InvalidHostCharacter(']'),
+        })?;
+        if c != 'v' {
+            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+        };
+
+        let c = chars.next().ok_or(IriParseError {
+            kind: IriParseErrorKind::InvalidHostCharacter(']'),
+        })?;
+        if !c.is_ascii_hexdigit() {
+            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+        };
+
+        let c = chars.next().ok_or(IriParseError {
+            kind: IriParseErrorKind::InvalidHostCharacter(']'),
+        })?;
+        if c != '.' {
+            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+        };
+
+        if chars.as_str().is_empty() {
+            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(']'));
+        };
+        for c in chars {
+            if !is_iunreserved_or_sub_delims(c) && c != ':' {
+                return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+            }
+        }
+
+        Ok(())
     }
 }
 
