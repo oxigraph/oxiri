@@ -1378,7 +1378,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 if c == ']' {
                     let ip = &self.iri[start_position + 1..self.input.position - 1];
                     if !UNCHECKED {
-                        if ip.starts_with('v') {
+                        if ip.starts_with('v') || ip.starts_with('V') {
                             self.validate_ip_v_future(ip)?;
                         } else if let Err(error) = Ipv6Addr::from_str(ip) {
                             return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
@@ -1598,29 +1598,31 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         let c = chars.next().ok_or(IriParseError {
             kind: IriParseErrorKind::InvalidHostCharacter(']'),
         })?;
-        if c != 'v' {
+        if !matches!(c, 'v' | 'V') {
             return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
         };
 
-        let c = chars.next().ok_or(IriParseError {
-            kind: IriParseErrorKind::InvalidHostCharacter(']'),
-        })?;
-        if !c.is_ascii_hexdigit() {
-            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
-        };
-
-        let c = chars.next().ok_or(IriParseError {
-            kind: IriParseErrorKind::InvalidHostCharacter(']'),
-        })?;
-        if c != '.' {
-            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
-        };
+        let mut with_a_version = false;
+        for c in &mut chars {
+            if c == '.' {
+                break;
+            } else if c.is_ascii_hexdigit() {
+                with_a_version = true;
+            } else {
+                return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+            }
+        }
+        if !with_a_version {
+            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(
+                chars.next().unwrap_or(']'),
+            ));
+        }
 
         if chars.as_str().is_empty() {
             return self.parse_error(IriParseErrorKind::InvalidHostCharacter(']'));
         };
         for c in chars {
-            if !is_iunreserved_or_sub_delims(c) && c != ':' {
+            if !is_unreserved_or_sub_delims(c) && c != ':' {
                 return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
             }
         }
@@ -1666,5 +1668,28 @@ fn is_iunreserved_or_sub_delims(c: char) -> bool {
         | '\u{C0000}'..='\u{CFFFD}'
         | '\u{D0000}'..='\u{DFFFD}'
         | '\u{E1000}'..='\u{EFFFD}'
+    )
+}
+
+fn is_unreserved_or_sub_delims(c: char) -> bool {
+    matches!(c,
+        'a'..='z'
+        | 'A'..='Z'
+        | '0'..='9'
+        | '!'
+        | '$'
+        | '&'
+        | '\''
+        | '('
+        | ')'
+        | '*'
+        | '+'
+        | ','
+        | '-'
+        | '.'
+        | ';'
+        | '='
+        | '_'
+        | '~'
     )
 }
