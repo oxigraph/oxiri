@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4] - 2024-08-20
+
+### Changed
+
+- Makes IRI parsing a bit more strict to follow RFC 3987 more closely.
+- Allow IP vFuture in authority.
+
 ## [0.2.3] - 2024-03-23
 
 ### Added
