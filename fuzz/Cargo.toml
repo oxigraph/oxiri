@@ -21,3 +21,7 @@ path = "fuzz_targets/parse.rs"
 [[bin]]
 name = "resolve"
 path = "fuzz_targets/resolve.rs"
+
+[[bin]]
+name = "relativize"
+path = "fuzz_targets/relativize.rs"
