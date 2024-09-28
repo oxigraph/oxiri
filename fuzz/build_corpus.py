@@ -47,7 +47,7 @@ data = ['', '\n', ' ', '#', '#\x00', '#?%2F', '#Animal', '#bar', '#ccc', '#here'
         'tel:+1-816-555-1212', 'telnet://192.0.2.16:80/', 'urn:oasis:names:specification:docbook:dtd:xml:4.1.2', 'y/z',
         'y?q', 'z/', '\ue000']
 
-for workset in ('parse', 'resolve'):
+for workset in ('parse', 'resolve', 'relativize'):
     corpus_dir = Path('corpus') / workset
     corpus_dir.mkdir(parents=True, exist_ok=True)
     for l in data:

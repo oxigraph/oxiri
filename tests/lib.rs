@@ -39,9 +39,10 @@ fn test_parsing() {
         "http://[V0.a]"
     ];
 
-    for e in examples.iter() {
-        let unchecked = Iri::parse_unchecked(*e);
-        match Iri::parse(*e) {
+    for e in examples {
+        let unchecked = Iri::parse_unchecked(e);
+        assert_eq!(unchecked, e);
+        match Iri::parse(e) {
             Ok(iri) => {
                 assert_eq!(unchecked, iri);
                 assert_eq!(unchecked.scheme(), iri.scheme());
@@ -145,9 +146,10 @@ fn test_relative_parsing() {
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
-    for e in examples.iter() {
-        let unchecked = IriRef::parse_unchecked(*e);
-        match IriRef::parse(*e) {
+    for e in examples {
+        let unchecked = IriRef::parse_unchecked(e);
+        assert_eq!(unchecked, e);
+        match IriRef::parse(e) {
             Ok(iri) => {
                 assert_eq!(unchecked, iri);
                 assert_eq!(unchecked.scheme(), iri.scheme());
@@ -266,7 +268,7 @@ fn test_wrong_relative_parsing() {
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
-    for e in examples.iter() {
+    for e in examples {
         let result = base.resolve(e);
         assert!(result.is_err(), "{} is wrongly considered valid", e);
     }
@@ -486,10 +488,10 @@ fn test_resolve_relative_iri() {
         ("y/z", "http://ex/x/y?pp/qq", "http://ex/x/y/z"),
         ("y?q", "http://ex/x/y?q", "http://ex/x/y?q"),
         ("/x/y?q", "http://ex?p", "http://ex/x/y?q"),
-        /*("c/d", "foo:a/b", "foo:a/c/d"),
+        ("c/d", "foo:a/b", "foo:a/c/d"),
         ("/c/d", "foo:a/b", "foo:/c/d"),
         ("", "foo:a/b?c#d", "foo:a/b?c"),
-        ("b/c", "foo:a", "foo:b/c"),*/
+        ("b/c", "foo:a", "foo:b/c"),
         ("../b/c", "foo:/a/y/z", "foo:/a/b/c"),
         //("./b/c", "foo:a", "foo:b/c"),
         //("/./b/c", "foo:a", "foo:/b/c"),
@@ -552,12 +554,12 @@ fn test_resolve_relative_iri() {
         ("s", "http://example.com", "http://example.com/s"),
     ];
 
-    for (relative, base, output) in examples.iter() {
-        let base = Iri::parse(*base).unwrap();
+    for (relative, base, output) in examples {
+        let base = Iri::parse(base).unwrap();
         match base.resolve(relative) {
             Ok(result) => assert_eq!(
                 result.as_str(),
-                *output,
+                output,
                 "Resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
             ),
             Err(error) => panic!(
@@ -568,9 +570,155 @@ fn test_resolve_relative_iri() {
         let result = base.resolve_unchecked(relative);
         assert_eq!(
             result.as_str(),
-            *output,
+            output,
             "Lenient resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
         );
+    }
+}
+
+#[test]
+fn test_relativize_iri() {
+    let examples = [
+        ("http:", "http:", ""),
+        ("http://example.com", "http://example.com", ""),
+        ("http://example.com/foo", "http://example.com/foo", ""),
+        (
+            "http://example.com/foo/bar",
+            "http://example.com/foo/bar",
+            "",
+        ),
+        (
+            "http://example.com/foo/bar?bat",
+            "http://example.com/foo/bar?bat",
+            "",
+        ),
+        (
+            "http://example.com/foo/bar?bat#baz",
+            "http://example.com/foo/bar?bat#baz",
+            "#baz",
+        ),
+        ("http:", "https:", "http:"),
+        ("http://example.com", "http://example.org", "//example.com"),
+        ("http://example.com/foo", "http://example.com/bar", "foo"),
+        (
+            "http://example.com/foo?bat",
+            "http://example.com/foo?foo",
+            "?bat",
+        ),
+        (
+            "http://example.com/foo?bat#baz",
+            "http://example.com/foo?bat#foo",
+            "#baz",
+        ),
+        ("http://example.com", "http:", "//example.com"),
+        ("http://example.com", "http://", "//example.com"),
+        ("http://example.com", "http://example.org", "//example.com"),
+        ("http://example.com/foo", "http://example.com/", "foo"),
+        ("http://example.com/foo", "http://example.com/bar", "foo"),
+        (
+            "http://example.com/foo",
+            "http://example.com/bar/baz",
+            "/foo",
+        ),
+        (
+            "http://example.com/foo/bar",
+            "http://example.com/foo/baz",
+            "bar",
+        ),
+        (
+            "http://example.com/foo/bar",
+            "http://example.com/foo",
+            "/foo/bar",
+        ),
+        (
+            "http://example.com/foo?bar",
+            "http://example.com/foo?baz",
+            "?bar",
+        ),
+        (
+            "http://example.com?bar",
+            "http://example.com/a",
+            "//example.com?bar",
+        ),
+        ("http://example.com?bar", "http://example.com", "?bar"),
+        (
+            "http://example.com?bar",
+            "http://example.com/",
+            "//example.com?bar",
+        ),
+        (
+            "http://example.com/foo#bar",
+            "http://example.com/foo#baz",
+            "#bar",
+        ),
+        (
+            "http://example.com/foo/",
+            "http://example.com/foo/bar",
+            "/foo/",
+        ),
+        ("http://example.com/:", "http://example.com/foo", "/:"),
+        ("http:", "http://example.com", "http:"),
+        ("http:?foo", "http://example.com", "http:?foo"),
+        (
+            "http://example.com",
+            "http://example.com/foo",
+            "//example.com",
+        ),
+        (
+            "http://example.com",
+            "http://example.com?query",
+            "//example.com",
+        ),
+        (
+            "http://example.com/foo",
+            "http://example.com/foo?query",
+            "foo",
+        ),
+        ("http:?query", "http://example.com?query", "http:?query"),
+        ("http:/path", "http://example.com/foo", "http:/path"),
+        (
+            "http://example.com//a",
+            "http://example.com/",
+            "//example.com//a",
+        ),
+        ("urn:ab", "urn:", "ab"),
+        ("urn:isbn:foo", "urn:", "urn:isbn:foo"),
+        ("urn:is/bn:foo", "urn:", "is/bn:foo"),
+        ("urn:.", "urn:", "."),
+    ];
+
+    for (original, base, output) in examples {
+        let original = Iri::parse(original).unwrap();
+        let base = Iri::parse(base).unwrap();
+        let output = IriRef::parse(output).unwrap();
+        let actual = base.relativize(&original).unwrap();
+        assert_eq!(
+            actual, output,
+            "Relativizing {original} against {base} gives {actual} and not {output}"
+        );
+        let resolved = base.resolve(actual.as_str()).unwrap();
+        assert_eq!(
+            resolved, original,
+            "Resolving {actual} against {base} gives {resolved} and not {original}"
+        );
+    }
+}
+
+#[test]
+fn test_relativize_iri_fails() {
+    let examples = [
+        "http://example.com/a/../b",
+        "http://example.com/a/..",
+        "http://example.com/./b",
+        "http://example.com/.",
+    ];
+
+    let base = Iri::parse("http://example.com/s").unwrap();
+    for e in examples {
+        let e = Iri::parse(e).unwrap();
+        assert!(base.relativize(&e).is_err());
+        // We make sure it's not possible to relativize
+        assert_ne!(base.resolve(e.as_str()).unwrap(), e);
     }
 }
 

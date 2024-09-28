@@ -132,6 +132,72 @@ fn iri_resolve(c: &mut Criterion) {
     });
 }
 
-criterion_group!(iri, iri_parse, iri_parse_relative, iri_resolve);
+fn iri_relativize(c: &mut Criterion) {
+    let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
+    let examples = [
+        "g:h",
+        "g",
+        "g/",
+        "/g",
+        "//g",
+        "?y",
+        "g?y",
+        "#s",
+        "g#s",
+        "g?y#s",
+        ";x",
+        "g;x",
+        "g;x?y#s",
+        "",
+        ".",
+        "./",
+        "./g",
+        "..",
+        "../",
+        "../g",
+        "../..",
+        "../../",
+        "../../g",
+        "../../../g",
+        "../../../../g",
+        "/./g",
+        "/../g",
+        "g.",
+        ".g",
+        "g..",
+        "..g",
+        "./../g",
+        "./g/.",
+        "g/./h",
+        "g/../h",
+        "g;x=1/./y",
+        "g;x=1/../y",
+        "g?y/./x",
+        "g?y/../x",
+        "g#s/./x",
+        "g#s/../x",
+        "http:g",
+        "./g:h",
+    ]
+    .into_iter()
+    .map(|iri| base.resolve(iri).unwrap())
+    .collect::<Vec<_>>();
+
+    c.bench_function("Iri::relativize", |b| {
+        b.iter(|| {
+            for iri in &examples {
+                base.relativize(iri).unwrap();
+            }
+        })
+    });
+}
+
+criterion_group!(
+    iri,
+    iri_parse,
+    iri_parse_relative,
+    iri_resolve,
+    iri_relativize
+);
 
 criterion_main!(iri);

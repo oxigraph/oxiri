@@ -632,6 +632,137 @@ impl<T: Deref<Target = str>> Iri<T> {
         self.0.resolve_into_unchecked(iri, target_buffer)
     }
 
+    /// Returns an IRI that, when resolved against the current IRI returns `abs`.
+    ///
+    /// This function returns an error
+    /// if is not possible to build a relative IRI that can resolve to the same IRI.
+    /// For example, when the path contains `/../`.
+    ///
+    /// Note that the output of this function might change in minor releases.
+    ///
+    /// ```
+    /// use oxiri::Iri;
+    ///
+    /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
+    /// let iri = Iri::parse("http://foo.com/bar/bat#foo")?;
+    /// let relative_iri = base_iri.relativize(&iri)?;
+    /// assert_eq!(relative_iri, "bat#foo");
+    /// # Result::<(), Box<dyn std::error::Error>>::Ok(())
+    /// ```
+    pub fn relativize<T2: Deref<Target = str>>(
+        &self,
+        abs: &Iri<T2>,
+    ) -> Result<IriRef<String>, IriRelativizeError> {
+        let base = self;
+        let abs_authority = abs.authority();
+        let base_authority = base.authority();
+        let abs_path = abs.path();
+        let base_path = base.path();
+        let abs_query = abs.query();
+        let base_query = base.query();
+
+        // We validate the path, resolving algorithm eats /. and /.. in hierarchical path
+        for segment in abs_path.split('/').skip(1) {
+            if matches!(segment, "." | "..") {
+                return Err(IriRelativizeError {});
+            }
+        }
+
+        if abs.scheme() != base.scheme()
+            || abs_authority.is_none() && base_authority.is_some()
+            || abs_path
+                // Might confuse with a scheme
+                .split_once(':')
+                .map_or(false, |(candidate_scheme, _)| {
+                    !candidate_scheme.contains('/')
+                })
+        {
+            return Ok(IriRef {
+                iri: abs.0.to_string(),
+                positions: abs.0.positions,
+            });
+        }
+        if abs_authority != base_authority
+            // the resolution algorithm does not handle empty paths:
+            || abs_path.is_empty() && (!base_path.is_empty() || base_query.is_some())
+            // confusion with authority:
+            || abs_path.starts_with("//")
+        {
+            return Ok(IriRef {
+                iri: abs.0[abs.0.positions.scheme_end..].to_string(),
+                positions: IriElementsPositions {
+                    scheme_end: 0,
+                    authority_end: abs.0.positions.authority_end - abs.0.positions.scheme_end,
+                    path_end: abs.0.positions.path_end - abs.0.positions.scheme_end,
+                    query_end: abs.0.positions.query_end - abs.0.positions.scheme_end,
+                },
+            });
+        }
+        if abs_path != base_path || abs_query.is_none() && base_query.is_some() {
+            let number_of_shared_characters = abs_path
+                .bytes()
+                .zip(base_path.bytes())
+                .take_while(|(l, r)| l == r)
+                .count();
+            // We decrease until finding a /
+            let number_of_shared_characters = abs_path[..number_of_shared_characters]
+                .rfind('/')
+                .map_or(0, |n| n + 1);
+            return if abs_path[number_of_shared_characters..].contains('/')
+                || base_path[number_of_shared_characters..].contains('/')
+                || abs_path[number_of_shared_characters..].is_empty()
+                || abs_path[number_of_shared_characters..].contains(':')
+            {
+                // We output the full path because we have a / or an empty end
+                Ok(IriRef {
+                    iri: abs.0[abs.0.positions.authority_end..].to_string(),
+                    positions: IriElementsPositions {
+                        scheme_end: 0,
+                        authority_end: 0,
+                        path_end: abs.0.positions.path_end - abs.0.positions.authority_end,
+                        query_end: abs.0.positions.query_end - abs.0.positions.authority_end,
+                    },
+                })
+            } else {
+                // We just override the last element
+                Ok(IriRef {
+                    iri: abs.0[abs.0.positions.authority_end + number_of_shared_characters..]
+                        .to_string(),
+                    positions: IriElementsPositions {
+                        scheme_end: 0,
+                        authority_end: 0,
+                        path_end: abs.0.positions.path_end
+                            - abs.0.positions.authority_end
+                            - number_of_shared_characters,
+                        query_end: abs.0.positions.query_end
+                            - abs.0.positions.authority_end
+                            - number_of_shared_characters,
+                    },
+                })
+            };
+        }
+        if abs_query != base_query {
+            return Ok(IriRef {
+                iri: abs.0[abs.0.positions.path_end..].to_string(),
+                positions: IriElementsPositions {
+                    scheme_end: 0,
+                    authority_end: 0,
+                    path_end: 0,
+                    query_end: abs.0.positions.query_end - abs.0.positions.path_end,
+                },
+            });
+        }
+        Ok(IriRef {
+            iri: abs.0[abs.0.positions.query_end..].to_string(),
+            positions: IriElementsPositions {
+                scheme_end: 0,
+                authority_end: 0,
+                path_end: 0,
+                query_end: 0,
+            },
+        })
+    }
+
     /// Returns an IRI borrowing this IRI's text
     #[inline]
     pub fn as_ref(&self) -> Iri<&str> {
@@ -993,7 +1124,7 @@ impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for Iri<T>
     }
 }
 
-/// An error raised during [`Iri`](struct.Iri.html) validation.
+/// An error raised during [`Iri`] or [`IriRef`] validation.
 #[derive(Debug)]
 pub struct IriParseError {
     kind: IriParseErrorKind,
@@ -1039,6 +1170,24 @@ enum IriParseErrorKind {
     InvalidIriCodePoint(char),
     InvalidPercentEncoding([Option<char>; 3]),
 }
+
+/// An error raised when calling [`Iri::relativize`].
+///
+/// It can happen when it is not possible to build a relative IRI that can resolve to the same IRI.
+/// For example, when the path contains `/../`.
+#[derive(Debug)]
+pub struct IriRelativizeError {}
+
+impl fmt::Display for IriRelativizeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "It is not possible to make this IRI relative because it contains `/..` or `/.`"
+        )
+    }
+}
+
+impl Error for IriRelativizeError {}
 
 #[derive(Debug, Clone, Copy)]
 struct IriElementsPositions {
