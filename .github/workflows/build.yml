@@ -111,12 +111,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-${{ matrix.target }}
       - run: rustup update && rustup toolchain install nightly
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-fuzz || true
       - run: python3 build_corpus.py
         working-directory: ./fuzz
       - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=200 -max_len=64
+      - run: cargo +nightly fuzz cmin ${{ matrix.target }}
 
   codecov:
     runs-on: ubuntu-latest
@@ -133,3 +138,5 @@ jobs:
         with:
           files: codecov.json
           flags: rust
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
