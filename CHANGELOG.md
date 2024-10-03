@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.5] - 2024-10-03
+
+### Added
+
+- `Iri::relativize` to build a relative IRI from a base IRI and an absolute IRI.
+
 ## [0.2.4] - 2024-08-20
 
 ### Changed
