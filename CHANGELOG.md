@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Fixes relativize on hierarchical paths without authority and starting slash Thomas Tanon 31 minutes ago
+- Fixes relativize on hierarchical paths without authority and starting slash.
 
 ## [0.2.5] - 2024-10-03
 
