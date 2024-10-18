@@ -714,15 +714,24 @@ impl<T: Deref<Target = str>> Iri<T> {
                 || abs_path[number_of_shared_characters..].contains(':')
             {
                 // We output the full path because we have a / or an empty end
-                Ok(IriRef {
-                    iri: abs.0[abs.0.positions.authority_end..].to_string(),
-                    positions: IriElementsPositions {
-                        scheme_end: 0,
-                        authority_end: 0,
-                        path_end: abs.0.positions.path_end - abs.0.positions.authority_end,
-                        query_end: abs.0.positions.query_end - abs.0.positions.authority_end,
-                    },
-                })
+                if !abs_path.starts_with('/') && !base_path.is_empty() {
+                    // We output the full IRI because we have a path that does not start with /,
+                    // so it can't be considered as absolute
+                    Ok(IriRef {
+                        iri: abs.0.to_string(),
+                        positions: abs.0.positions,
+                    })
+                } else {
+                    Ok(IriRef {
+                        iri: abs.0[abs.0.positions.authority_end..].to_string(),
+                        positions: IriElementsPositions {
+                            scheme_end: 0,
+                            authority_end: 0,
+                            path_end: abs.0.positions.path_end - abs.0.positions.authority_end,
+                            query_end: abs.0.positions.query_end - abs.0.positions.authority_end,
+                        },
+                    })
+                }
             } else {
                 // We just override the last element
                 Ok(IriRef {
