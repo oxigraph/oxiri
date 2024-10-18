@@ -1451,10 +1451,6 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     self.output_positions.authority_end = base.positions.authority_end;
                     self.output_positions.path_end = base.positions.path_end;
                     self.remove_last_segment();
-                    if self.output.len() > base.positions.scheme_end {
-                        // We have some path or authority, we keep a base '/'
-                        self.output.push('/');
-                    }
                     self.parse_relative_path()
                 }
             }
@@ -1646,12 +1642,10 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             match c {
                 None | Some('/') | Some('?') | Some('#') => {
                     if self.output.as_str().ends_with("/..") {
+                        self.output.truncate(self.output.len() - 3);
                         self.remove_last_segment();
-                        self.remove_last_segment();
-                        self.output.push('/');
                     } else if self.output.as_str().ends_with("/.") {
-                        self.remove_last_segment();
-                        self.output.push('/');
+                        self.output.truncate(self.output.len() - 1);
                     } else if c == Some('/') {
                         self.output.push('/');
                     }
@@ -1704,11 +1698,18 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     }
 
     fn remove_last_segment(&mut self) {
-        let last_slash_position = self.output.as_str()[self.output_positions.authority_end..]
-            .rfind('/')
-            .unwrap_or(0);
-        self.output
-            .truncate(last_slash_position + self.output_positions.authority_end)
+        if let Some(last_slash_position) =
+            self.output.as_str()[self.output_positions.authority_end..].rfind('/')
+        {
+            self.output
+                .truncate(last_slash_position + self.output_positions.authority_end);
+            self.output.push('/');
+        } else {
+            self.output.truncate(self.output_positions.authority_end);
+            if self.output_positions.authority_end > self.output_positions.scheme_end {
+                self.output.push('/');
+            }
+        }
     }
 
     fn read_url_codepoint_or_echar(
