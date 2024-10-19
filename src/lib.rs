@@ -669,7 +669,10 @@ impl<T: Deref<Target = str>> Iri<T> {
         }
 
         if abs.scheme() != base.scheme()
-            || abs_authority.is_none() && base_authority.is_some()
+            || abs_authority.is_none()
+                && (base_authority.is_some()
+                    || abs_path.is_empty()
+                        && (!base_path.is_empty() || abs_query.is_none() && base_query.is_some()))
             || abs_path
                 // Might confuse with a scheme
                 .split_once(':')
