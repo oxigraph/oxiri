@@ -1050,6 +1050,10 @@ fn test_relativize_iri() {
         ("t:e/e/p", "t:e/s", "t:e/e/p"),
         ("htt:/foo/gp", "htt:/foo/", "gp"),
         ("htt:/gp", "htt:/", "gp"),
+        ("x:", "x://foo", "x:"),
+        ("x:", "x:02", "x:"),
+        ("x:", "x:?foo", "x:"),
+        ("x:", "x:?foo", "x:"),
     ];
 
     for (original, base, output) in examples {

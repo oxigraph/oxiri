@@ -8,8 +8,24 @@ fuzz_target!(|data: &[u8]| {
         let Ok(iri) = Iri::parse(s) else {
             return;
         };
-        for base in ["http://a/b/c/d;p?q", "http://a/", "http://a", "http:"] {
-            let base = Iri::parse(base).unwrap();
+        for base in [
+            "http://a/b/c/d?q",
+            "http://a/",
+            "http://a",
+            "http:",
+            "http:/",
+            "http:/a",
+            "http:/a/b",
+            "http:/a/",
+            "http:a",
+            "http:a/b",
+            "http:?a",
+            "http:#a",
+            "http://a?b",
+            "http:/a?b",
+            "http:a?b",
+        ] {
+            let base = Iri::parse_unchecked(base);
             match base.relativize(&iri) {
                 Ok(relative) => {
                     let from_relative = base.resolve(relative.as_str()).unwrap();
