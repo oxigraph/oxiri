@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.8] - 2024-10-19
+
+### Changed
+
+- Fixes relativize on IRIs with a scheme and nothing else.
+
 ## [0.2.7] - 2024-10-19
 
 ### Changed
