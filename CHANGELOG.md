@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.7] - 2024-10-19
+
+### Changed
+
+- Fixes relative IRI resolution when there is no authority but a path starting with "/".
+
 ## [0.2.6] - 2024-10-18
 
 ### Changed
