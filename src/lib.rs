@@ -714,7 +714,6 @@ impl<T: Deref<Target = str>> Iri<T> {
                 .map_or(0, |n| n + 1);
             return if abs_path[number_of_shared_characters..].contains('/')
                 || base_path[number_of_shared_characters..].contains('/')
-                || abs_path[number_of_shared_characters..].is_empty()
                 || abs_path[number_of_shared_characters..].contains(':')
             {
                 // We output the full path because we have a / or an empty end
@@ -736,6 +735,28 @@ impl<T: Deref<Target = str>> Iri<T> {
                         },
                     })
                 }
+            } else if abs_path[number_of_shared_characters..].is_empty() {
+                // We use "."
+                let mut iri = String::with_capacity(
+                    abs.0.len() - abs.0.positions.authority_end - number_of_shared_characters + 1,
+                );
+                iri.push('.');
+                iri.push_str(&abs.0[abs.0.positions.authority_end + number_of_shared_characters..]);
+                Ok(IriRef {
+                    iri,
+                    positions: IriElementsPositions {
+                        scheme_end: 0,
+                        authority_end: 0,
+                        path_end: abs.0.positions.path_end
+                            - abs.0.positions.authority_end
+                            - number_of_shared_characters
+                            + 1,
+                        query_end: abs.0.positions.query_end
+                            - abs.0.positions.authority_end
+                            - number_of_shared_characters
+                            + 1,
+                    },
+                })
             } else {
                 // We just override the last element
                 Ok(IriRef {
