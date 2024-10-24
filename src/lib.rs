@@ -711,8 +711,7 @@ impl<T: Deref<Target = str>> Iri<T> {
             let number_of_shared_characters = abs_path[..number_of_shared_characters]
                 .rfind('/')
                 .map_or(0, |n| n + 1);
-            return if abs_path[number_of_shared_characters..].contains('/')
-                || base_path[number_of_shared_characters..].contains('/')
+            return if base_path[number_of_shared_characters..].contains('/')
                 || abs_path[number_of_shared_characters..].contains(':')
             {
                 // We output the full path because we have a / or an empty end
