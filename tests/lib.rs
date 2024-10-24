@@ -1052,6 +1052,29 @@ fn test_relativize_iri() {
         ("x:", "x:?foo", "x:"),
         ("http://example.com", "http://example.com#foo", ""),
         ("http://example.com/a/", "http://example.com/a/b", "."),
+        (
+            "http://example.com/a/z/e",
+            "http://example.com/a/b/",
+            "../z/e",
+        ),
+        ("http://example.com/a/", "http://example.com/a/b/", ".."),
+        ("http://example.com/a/", "http://example.com/a/b/c", ".."),
+        (
+            "http://example.com/a/#foo",
+            "http://example.com/a/b/c",
+            "..#foo",
+        ),
+        ("http://example.com/a/", "http://example.com/a/b/c", ".."),
+        (
+            "http://example.com/a/b/c",
+            "http://example.com/a/b/c/d",
+            "../c",
+        ),
+        (
+            "http://example.com/a/b/e",
+            "http://example.com/a/b/c/d",
+            "../e",
+        ),
     ];
 
     for (original, base, output) in examples {
@@ -1068,6 +1091,7 @@ fn test_relativize_iri() {
             resolved, original,
             "Resolving {actual} against {base} gives {resolved} and not {original}"
         );
+        // TODO: check elements in the relative IRI
     }
 }
 
