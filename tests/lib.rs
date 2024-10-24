@@ -1015,7 +1015,7 @@ fn test_relativize_iri() {
         (
             "http://example.com/foo/bar",
             "http://example.com/foo",
-            "/foo/bar",
+            "foo/bar",
         ),
         (
             "http://example.com/foo?bar",
@@ -1067,7 +1067,7 @@ fn test_relativize_iri() {
         ("urn:ab", "urn:", "ab"),
         ("urn:isbn:foo", "urn:", "urn:isbn:foo"),
         ("urn:is/bn:foo", "urn:", "is/bn:foo"),
-        ("t:e/e/p", "t:e/s", "t:e/e/p"),
+        ("t:e/e/p", "t:e/s", "e/p"),
         ("htt:/foo/gp", "htt:/foo/", "gp"),
         ("htt:/gp", "htt:/", "gp"),
         ("x:", "x://foo", "x:"),
@@ -1077,6 +1077,7 @@ fn test_relativize_iri() {
         ("http://example.com", "http://example.com#foo", ""),
         ("http://example.com/a/", "http://example.com/a/b", "."),
         ("http://example.com/a/?c", "http://example.com/a/b", ".?c"),
+        ("t:o//", "t:o/", "t:o//"),
     ];
 
     for (original, base, output) in examples {
