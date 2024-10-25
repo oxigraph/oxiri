@@ -558,12 +558,20 @@ fn test_resolve_relative_iri() {
 
     for (relative, base, output) in examples {
         let base = Iri::parse(base).unwrap();
+        let output = Iri::parse(output).unwrap();
         match base.resolve(relative) {
-            Ok(result) => assert_eq!(
-                result.as_str(),
-                output,
-                "Resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
-            ),
+            Ok(result) => {
+                assert_eq!(
+                    result,
+                    output,
+                    "Resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
+                );
+                assert_eq!(result.scheme(), output.scheme());
+                assert_eq!(result.authority(), output.authority());
+                assert_eq!(result.path(), output.path());
+                assert_eq!(result.query(), output.query());
+                assert_eq!(result.fragment(), output.fragment());
+            }
             Err(error) => panic!(
                 "Resolving of {} against {} failed with error: {}",
                 relative, base, error
@@ -1065,6 +1073,11 @@ fn test_relativize_iri() {
             actual, output,
             "Relativizing {original} against {base} gives {actual} and not {output}"
         );
+        assert_eq!(actual.scheme(), output.scheme());
+        assert_eq!(actual.authority(), output.authority());
+        assert_eq!(actual.path(), output.path());
+        assert_eq!(actual.query(), output.query());
+        assert_eq!(actual.fragment(), output.fragment());
         let resolved = base.resolve(actual.as_str()).unwrap();
         assert_eq!(
             resolved, original,
