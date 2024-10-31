@@ -1415,45 +1415,41 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     }
 
     fn parse_relative(&mut self) -> Result<(), IriParseError> {
-        if let Some(base) = self.base {
+        if self.base.is_some() {
             match self.input.front() {
                 None => {
-                    self.output.push_str(&base.iri[..base.positions.query_end]);
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.output_positions.query_end = base.positions.query_end;
+                    self.append_base_scheme();
+                    self.append_base_authority();
+                    self.append_base_path();
+                    self.append_base_query();
                     Ok(())
                 }
                 Some('/') => {
                     self.input.next();
-                    self.parse_relative_slash(&base)
+                    self.parse_relative_slash()
                 }
                 Some('?') => {
                     self.input.next();
-                    self.output.push_str(&base.iri[..base.positions.path_end]);
+                    self.append_base_scheme();
+                    self.append_base_authority();
+                    self.append_base_path();
                     self.output.push('?');
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
                     self.parse_query()
                 }
                 Some('#') => {
                     self.input.next();
-                    self.output.push_str(&base.iri[..base.positions.query_end]);
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.output_positions.query_end = base.positions.query_end;
+                    self.append_base_scheme();
+                    self.append_base_authority();
+                    self.append_base_path();
+                    self.append_base_query();
                     self.output.push('#');
                     self.parse_fragment()
                 }
                 _ => {
-                    self.output.push_str(&base.iri[..base.positions.path_end]);
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.remove_last_segment();
+                    self.append_base_scheme();
+                    self.append_base_authority();
+                    self.append_base_path();
+                    Self::remove_last_segment(self.output, &mut self.output_positions);
                     self.parse_relative_path()
                 }
             }
@@ -1482,20 +1478,17 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         self.parse_path()
     }
 
-    fn parse_relative_slash(&mut self, base: &IriRef<&'a str>) -> Result<(), IriParseError> {
+    fn parse_relative_slash(&mut self) -> Result<(), IriParseError> {
         if self.input.starts_with('/') {
             self.input.next();
-            self.output.push_str(&base.iri[..base.positions.scheme_end]);
-            self.output_positions.scheme_end = base.positions.scheme_end;
+            self.append_base_scheme();
             self.output.push('/');
             self.output.push('/');
             self.parse_authority()
         } else {
-            self.output
-                .push_str(&base.iri[..base.positions.authority_end]);
+            self.append_base_scheme();
+            self.append_base_authority();
             self.output.push('/');
-            self.output_positions.scheme_end = base.positions.scheme_end;
-            self.output_positions.authority_end = base.positions.authority_end;
             self.parse_path()
         }
     }
@@ -1646,7 +1639,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 None | Some('/') | Some('?') | Some('#') => {
                     if self.output.as_str().ends_with("/..") {
                         self.output.truncate(self.output.len() - 3);
-                        self.remove_last_segment();
+                        Self::remove_last_segment(self.output, &mut self.output_positions);
                     } else if self.output.as_str().ends_with("/.") {
                         self.output.truncate(self.output.len() - 1);
                     } else if c == Some('/') {
@@ -1700,17 +1693,58 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         Ok(())
     }
 
-    fn remove_last_segment(&mut self) {
-        if let Some(last_slash_position) =
-            self.output.as_str()[self.output_positions.authority_end..].rfind('/')
+    fn append_base_scheme(&mut self) {
+        let base = self.base.as_ref().unwrap();
+        self.output.push_str(&base.iri[..base.positions.scheme_end]);
+        self.output_positions.scheme_end = self.output.len();
+    }
+
+    fn append_base_authority(&mut self) {
+        let base = self.base.as_ref().unwrap();
+        self.output
+            .push_str(&base.iri[base.positions.scheme_end..base.positions.authority_end]);
+        self.output_positions.authority_end = self.output.len();
+    }
+
+    fn append_base_path(&mut self) {
+        let base = self.base.as_ref().unwrap();
+        let mut append_slash_allowed = true;
+        for (i, segment) in base.iri[base.positions.authority_end..base.positions.path_end]
+            .split('/')
+            .enumerate()
         {
-            self.output
-                .truncate(last_slash_position + self.output_positions.authority_end);
-            self.output.push('/');
+            if segment == ".." {
+                Self::remove_last_segment(self.output, &mut self.output_positions);
+                append_slash_allowed = false;
+            } else if segment == "." {
+            } else {
+                if i > 0 && append_slash_allowed {
+                    self.output.push('/');
+                }
+                append_slash_allowed = true;
+                self.output.push_str(segment);
+            }
+        }
+        self.output_positions.path_end = self.output.len();
+    }
+
+    fn append_base_query(&mut self) {
+        let base = self.base.as_ref().unwrap();
+        self.output
+            .push_str(&base.iri[base.positions.path_end..base.positions.query_end]);
+        self.output_positions.query_end = self.output.len();
+    }
+
+    fn remove_last_segment(output: &mut O, output_positions: &mut IriElementsPositions) {
+        if let Some(last_slash_position) =
+            output.as_str()[output_positions.authority_end..].rfind('/')
+        {
+            output.truncate(last_slash_position + output_positions.authority_end);
+            output.push('/');
         } else {
-            self.output.truncate(self.output_positions.authority_end);
-            if self.output_positions.authority_end > self.output_positions.scheme_end {
-                self.output.push('/');
+            output.truncate(output_positions.authority_end);
+            if output_positions.authority_end > output_positions.scheme_end {
+                output.push('/');
             }
         }
     }

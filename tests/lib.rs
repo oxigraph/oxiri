@@ -554,6 +554,50 @@ fn test_resolve_relative_iri() {
         ("///lv2.h", "file:foo", "file:///lv2.h"),
         ("lv2.h", "file:foo", "file:lv2.h"),
         ("s", "http://example.com", "http://example.com/s"),
+        (
+            "s",
+            "http://example.com/fo/./bar/baz",
+            "http://example.com/fo/bar/s",
+        ),
+        (
+            "?s",
+            "http://example.com/fo/./bar/baz",
+            "http://example.com/fo/bar/baz?s",
+        ),
+        (
+            "#s",
+            "http://example.com/fo/./bar/baz",
+            "http://example.com/fo/bar/baz#s",
+        ),
+        (
+            "s",
+            "http://example.com/fo/../bar/baz",
+            "http://example.com/bar/s",
+        ),
+        (
+            "?s",
+            "http://example.com/fo/../bar/baz",
+            "http://example.com/bar/baz?s",
+        ),
+        (
+            "#s",
+            "http://example.com/fo/../bar/baz",
+            "http://example.com/bar/baz#s",
+        ),
+        (
+            "s",
+            "http://example.com/../bar/baz",
+            "http://example.com/bar/s",
+        ),
+        (
+            "s",
+            "http://example.com/./bar/baz",
+            "http://example.com/bar/s",
+        ),
+        ("s", "s:foo/../bar/baz", "s:bar/s"),
+        ("s", "s:../bar/baz", "s:bar/s"),
+        ("s", "s:foo/./bar/baz", "s:foo/bar/s"),
+        ("s", "s:./bar/baz", "s:/bar/s"),
     ];
 
     for (relative, base, output) in examples {
