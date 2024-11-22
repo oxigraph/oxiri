@@ -468,7 +468,7 @@ impl<'a> From<IriRef<&'a str>> for IriRef<Cow<'a, str>> {
     }
 }
 
-impl<'a> From<IriRef<String>> for IriRef<Cow<'a, str>> {
+impl From<IriRef<String>> for IriRef<Cow<'_, str>> {
     #[inline]
     fn from(iri: IriRef<String>) -> Self {
         Self {
@@ -1078,7 +1078,7 @@ impl<'a> From<Iri<&'a str>> for Iri<Cow<'a, str>> {
     }
 }
 
-impl<'a> From<Iri<String>> for Iri<Cow<'a, str>> {
+impl From<Iri<String>> for Iri<Cow<'_, str>> {
     #[inline]
     fn from(iri: Iri<String>) -> Self {
         Self(iri.0.into())
@@ -1297,7 +1297,7 @@ struct ParserInput<'a> {
     position: usize,
 }
 
-impl<'a> ParserInput<'a> {
+impl ParserInput<'_> {
     #[inline]
     fn next(&mut self) -> Option<char> {
         if let Some(head) = self.value.next() {
