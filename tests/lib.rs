@@ -1021,11 +1021,7 @@ fn test_relativize_iri() {
             "http://example.com/foo#baz",
             "#bar",
         ),
-        (
-            "http://example.com/foo/",
-            "http://example.com/foo/bar",
-            "/foo/",
-        ),
+        ("http://example.com/foo/", "http://example.com/foo/bar", "."),
         ("http://example.com/:", "http://example.com/foo", "/:"),
         ("http:", "http://example.com", "http:"),
         ("http:?foo", "http://example.com", "http:?foo"),
@@ -1062,6 +1058,8 @@ fn test_relativize_iri() {
         ("x:", "x:02", "x:"),
         ("x:", "x:?foo", "x:"),
         ("x:", "x:?foo", "x:"),
+        ("http://example.com", "http://example.com#foo", ""),
+        ("http://example.com/a/", "http://example.com/a/b", "."),
     ];
 
     for (original, base, output) in examples {
