@@ -711,12 +711,32 @@ impl<T: Deref<Target = str>> Iri<T> {
             let number_of_shared_characters = abs_path[..number_of_shared_characters]
                 .rfind('/')
                 .map_or(0, |n| n + 1);
-            return if abs_path[number_of_shared_characters..].contains('/')
-                || base_path[number_of_shared_characters..].contains('/')
-                || abs_path[number_of_shared_characters..].is_empty()
-                || abs_path[number_of_shared_characters..].contains(':')
+
+            let mut relative_candidate = String::new();
+            let count_of_segments_in_base_path_we_want_to_ignore = base_path
+                [number_of_shared_characters..]
+                .split('/')
+                .skip(1)
+                .count();
+            let mut relative_extra_chars = 0;
+            for _ in 0..count_of_segments_in_base_path_we_want_to_ignore {
+                relative_candidate.push_str("../"); // We move back to parent
+                relative_extra_chars += 3;
+            }
+            if count_of_segments_in_base_path_we_want_to_ignore > 0
+                && abs_path.len() == number_of_shared_characters
             {
-                // We output the full path because we have a / or an empty end
+                // We remove the last "/"
+                relative_candidate.pop();
+                relative_extra_chars -= 1;
+            }
+            relative_candidate
+                .push_str(&abs.0[abs.0.positions.authority_end + number_of_shared_characters..]);
+            return if relative_candidate.len() > abs.0[abs.0.positions.authority_end..].len()
+                || relative_candidate.contains(':')
+            {
+                // We output the full path because the relative one is longer
+                // or will be confused with a scheme
                 if !abs_path.starts_with('/') && !base_path.is_empty() {
                     // We output the full IRI because we have a path that does not start with /,
                     // so it can't be considered as absolute
@@ -735,18 +755,37 @@ impl<T: Deref<Target = str>> Iri<T> {
                         },
                     })
                 }
-            } else {
-                // We just override the last element
+            } else if relative_candidate.is_empty() {
+                // We use "."
                 Ok(IriRef {
-                    iri: abs.0[abs.0.positions.authority_end + number_of_shared_characters..]
-                        .to_string(),
+                    iri: format!(
+                        "{}.",
+                        &abs.0[abs.0.positions.authority_end + number_of_shared_characters..]
+                    ),
                     positions: IriElementsPositions {
                         scheme_end: 0,
                         authority_end: 0,
                         path_end: abs.0.positions.path_end
                             - abs.0.positions.authority_end
-                            - number_of_shared_characters,
+                            - number_of_shared_characters
+                            + 1,
                         query_end: abs.0.positions.query_end
+                            - abs.0.positions.authority_end
+                            - number_of_shared_characters
+                            + 1,
+                    },
+                })
+            } else {
+                // We use the relative path
+                Ok(IriRef {
+                    iri: relative_candidate,
+                    positions: IriElementsPositions {
+                        scheme_end: 0,
+                        authority_end: 0,
+                        path_end: abs.0.positions.path_end + relative_extra_chars
+                            - abs.0.positions.authority_end
+                            - number_of_shared_characters,
+                        query_end: abs.0.positions.query_end + relative_extra_chars
                             - abs.0.positions.authority_end
                             - number_of_shared_characters,
                     },

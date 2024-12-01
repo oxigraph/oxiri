@@ -998,7 +998,7 @@ fn test_relativize_iri() {
         (
             "http://example.com/foo/bar",
             "http://example.com/foo",
-            "/foo/bar",
+            "foo/bar",
         ),
         (
             "http://example.com/foo?bar",
@@ -1021,11 +1021,7 @@ fn test_relativize_iri() {
             "http://example.com/foo#baz",
             "#bar",
         ),
-        (
-            "http://example.com/foo/",
-            "http://example.com/foo/bar",
-            "/foo/",
-        ),
+        ("http://example.com/foo/", "http://example.com/foo/bar", "."),
         ("http://example.com/:", "http://example.com/foo", "/:"),
         ("http:", "http://example.com", "http:"),
         ("http:?foo", "http://example.com", "http:?foo"),
@@ -1055,13 +1051,38 @@ fn test_relativize_iri() {
         ("urn:isbn:foo", "urn:", "urn:isbn:foo"),
         ("urn:is/bn:foo", "urn:", "is/bn:foo"),
         ("urn:.", "urn:", "."),
-        ("t:e/e/p", "t:e/s", "t:e/e/p"),
+        ("t:e/e/p", "t:e/s", "e/p"),
         ("htt:/foo/gp", "htt:/foo/", "gp"),
         ("htt:/gp", "htt:/", "gp"),
         ("x:", "x://foo", "x:"),
         ("x:", "x:02", "x:"),
         ("x:", "x:?foo", "x:"),
         ("x:", "x:?foo", "x:"),
+        ("http://example.com", "http://example.com#foo", ""),
+        ("http://example.com/a/", "http://example.com/a/b", "."),
+        (
+            "http://example.com/a/z/e",
+            "http://example.com/a/b/",
+            "../z/e",
+        ),
+        ("http://example.com/a/", "http://example.com/a/b/", ".."),
+        ("http://example.com/a/", "http://example.com/a/b/c", ".."),
+        (
+            "http://example.com/a/#foo",
+            "http://example.com/a/b/c",
+            "..#foo",
+        ),
+        ("http://example.com/a/", "http://example.com/a/b/c", ".."),
+        (
+            "http://example.com/a/b/c",
+            "http://example.com/a/b/c/d",
+            "../c",
+        ),
+        (
+            "http://example.com/a/b/e",
+            "http://example.com/a/b/c/d",
+            "../e",
+        ),
     ];
 
     for (original, base, output) in examples {
@@ -1083,6 +1104,7 @@ fn test_relativize_iri() {
             resolved, original,
             "Resolving {actual} against {base} gives {resolved} and not {original}"
         );
+        // TODO: check elements in the relative IRI
     }
 }
 
