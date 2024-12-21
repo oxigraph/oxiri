@@ -703,10 +703,11 @@ impl<T: Deref<Target = str>> Iri<T> {
         }
         if abs_path != base_path || abs_query.is_none() && base_query.is_some() {
             let number_of_shared_characters = abs_path
-                .bytes()
-                .zip(base_path.bytes())
+                .chars()
+                .zip(base_path.chars())
                 .take_while(|(l, r)| l == r)
-                .count();
+                .map(|(l, _)| l.len_utf8())
+                .sum::<usize>();
             // We decrease until finding a /
             let number_of_shared_characters = abs_path[..number_of_shared_characters]
                 .rfind('/')
