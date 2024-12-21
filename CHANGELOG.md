@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.9] - 2024-12-21
+
+### Changed
+
+- Relativize: avoid panic in case of shared UTF-8 prefix.
+
 ## [0.2.8] - 2024-10-19
 
 ### Changed
