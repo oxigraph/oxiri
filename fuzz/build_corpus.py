@@ -271,6 +271,7 @@ examples = [
     "y?q",
     "z/",
     "\ue000",
+    ".///C:::"
 ]
 example_pairs = [f"{e1}\0{e2}" for e1 in examples for e2 in examples]
 

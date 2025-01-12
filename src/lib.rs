@@ -510,7 +510,7 @@ impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for IriRef
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error;
 
-        Self::parse(T::deserialize(deserializer)?).map_err(D::Error::custom)
+        Self::parse(T::deserialize(deserializer)?).map_err(Error::custom)
     }
 }
 
@@ -662,7 +662,7 @@ impl<T: Deref<Target = str>> Iri<T> {
         let base_query = base.query();
 
         // We validate the path, resolving algorithm eats /. and /.. in hierarchical path
-        for segment in abs_path.split('/').skip(1) {
+        for segment in abs_path.split('/') {
             if matches!(segment, "." | "..") {
                 return Err(IriRelativizeError {});
             }
@@ -1133,7 +1133,7 @@ impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for Iri<T>
         use serde::de::Error;
         IriRef::deserialize(deserializer)?
             .try_into()
-            .map_err(D::Error::custom)
+            .map_err(Error::custom)
     }
 }
 
@@ -1160,6 +1160,9 @@ impl fmt::Display for IriParseError {
                 "Invalid IRI percent encoding '{}'",
                 cs.iter().flatten().cloned().collect::<String>()
             ),
+            IriParseErrorKind::PathStartingWithTwoSlashes => {
+                write!(f, "An IRI path is not allowed to start with //")
+            }
         }
     }
 }
@@ -1182,6 +1185,7 @@ enum IriParseErrorKind {
     InvalidPortCharacter(char),
     InvalidIriCodePoint(char),
     InvalidPercentEncoding([Option<char>; 3]),
+    PathStartingWithTwoSlashes,
 }
 
 /// An error raised when calling [`Iri::relativize`].
@@ -1645,13 +1649,34 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             let c = self.input.next();
             match c {
                 None | Some('/') | Some('?') | Some('#') => {
-                    if self.output.as_str().ends_with("/..") {
-                        self.output.truncate(self.output.len() - 3);
-                        self.remove_last_segment();
-                    } else if self.output.as_str().ends_with("/.") {
-                        self.output.truncate(self.output.len() - 1);
+                    let output_str = self.output.as_str();
+                    if !output_str.is_empty() {
+                        let output_path = &output_str[self.output_positions.authority_end..];
+                        if output_path.ends_with("/..") {
+                            self.output.truncate(self.output.len() - 3);
+                            self.remove_last_segment();
+                        } else if output_path.ends_with("/.") || output_path == "." {
+                            self.output.truncate(self.output.len() - 1);
+                        } else if output_path == ".." {
+                            self.output.truncate(self.output.len() - 2);
+                        } else if c == Some('/') {
+                            self.output.push('/');
+                            continue;
+                        }
                     } else if c == Some('/') {
                         self.output.push('/');
+                        continue;
+                    }
+
+                    // We validate that the path does not start with "//" and is ambiguous with an authority
+                    // It can happen after resolving ./ and ../
+                    let output_str = self.output.as_str();
+                    if !UNCHECKED
+                        && !output_str.is_empty()
+                        && output_str[self.output_positions.authority_end..].starts_with("//")
+                        && self.output_positions.authority_end == self.output_positions.scheme_end
+                    {
+                        return self.parse_error(IriParseErrorKind::PathStartingWithTwoSlashes);
                     }
 
                     if c == Some('?') {

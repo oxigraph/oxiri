@@ -277,6 +277,17 @@ fn test_wrong_relative_parsing() {
 }
 
 #[test]
+fn test_wrong_relative_parsing_on_scheme() {
+    let examples = [".///C:::"];
+
+    let base = Iri::parse("x:").unwrap();
+    for e in examples {
+        let result = base.resolve(e);
+        assert!(result.is_err(), "{} is wrongly considered valid", e);
+    }
+}
+
+#[test]
 fn test_resolve_relative_iri() {
     // From https://sourceforge.net/projects/foursuite/ under Apache License
 
@@ -495,11 +506,11 @@ fn test_resolve_relative_iri() {
         ("", "foo:a/b?c#d", "foo:a/b?c"),
         ("b/c", "foo:a", "foo:b/c"),
         ("../b/c", "foo:/a/y/z", "foo:/a/b/c"),
-        //("./b/c", "foo:a", "foo:b/c"),
-        //("/./b/c", "foo:a", "foo:/b/c"),
+        ("./b/c", "foo:a", "foo:b/c"),
+        ("/./b/c", "foo:a", "foo:/b/c"),
         ("../../d", "foo://a//b/c", "foo://a/d"),
-        //(".", "foo:a", "foo:"),
-        //("..", "foo:a", "foo:"),
+        (".", "foo:a", "foo:"),
+        ("..", "foo:a", "foo:"),
         // 50-57 (cf. TimBL comments --
         //  http://lists.w3.org/Archives/Public/uri/2003Feb/0028.html,
         //  http://lists.w3.org/Archives/Public/uri/2003Jan/0008.html)
@@ -554,6 +565,12 @@ fn test_resolve_relative_iri() {
         ("///lv2.h", "file:foo", "file:///lv2.h"),
         ("lv2.h", "file:foo", "file:lv2.h"),
         ("s", "http://example.com", "http://example.com/s"),
+        (".", "file:", "file:"),
+        ("..", "file:", "file:"),
+        ("./", "file:", "file:"),
+        ("../", "file:", "file:"),
+        ("./.", "file:", "file:"),
+        ("../..", "file:", "file:"),
     ];
 
     for (relative, base, output) in examples {
@@ -1054,7 +1071,6 @@ fn test_relativize_iri() {
         ("urn:ab", "urn:", "ab"),
         ("urn:isbn:foo", "urn:", "urn:isbn:foo"),
         ("urn:is/bn:foo", "urn:", "is/bn:foo"),
-        ("urn:.", "urn:", "."),
         ("t:e/e/p", "t:e/s", "t:e/e/p"),
         ("htt:/foo/gp", "htt:/foo/", "gp"),
         ("htt:/gp", "htt:/", "gp"),
@@ -1089,18 +1105,22 @@ fn test_relativize_iri() {
 #[test]
 fn test_relativize_iri_fails() {
     let examples = [
-        "http://example.com/a/../b",
-        "http://example.com/a/..",
-        "http://example.com/./b",
-        "http://example.com/.",
+        ("http://example.com/a/../b", "http://example.com/s"),
+        ("http://example.com/a/..", "http://example.com/s"),
+        ("http://example.com/./b", "http://example.com/s"),
+        ("http://example.com/.", "http://example.com/s"),
+        ("urn:.", "urn:"),
     ];
 
-    let base = Iri::parse("http://example.com/s").unwrap();
-    for e in examples {
-        let e = Iri::parse(e).unwrap();
-        assert!(base.relativize(&e).is_err());
+    for (iri, base) in examples {
+        let iri = Iri::parse(iri).unwrap();
+        let base = Iri::parse(base).unwrap();
+        assert!(
+            base.relativize(&iri).is_err(),
+            "Relativize {iri} against {base} is not properly failing"
+        );
         // We make sure it's not possible to relativize
-        assert_ne!(base.resolve(e.as_str()).unwrap(), e);
+        assert_ne!(base.resolve(iri.as_str()).unwrap(), iri);
     }
 }
 
