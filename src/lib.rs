@@ -1414,7 +1414,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                         self.parse_path_or_authority()
                     } else {
                         self.output_positions.authority_end = self.output.len();
-                        self.parse_path()
+                        self.parse_path::<false>()
                     };
                 }
                 _ => {
@@ -1436,7 +1436,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             self.parse_authority()
         } else {
             self.output_positions.authority_end = self.output.len() - 1;
-            self.parse_path()
+            self.parse_path::<false>()
         }
     }
 
@@ -1480,7 +1480,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     self.output_positions.authority_end = base.positions.authority_end;
                     self.output_positions.path_end = base.positions.path_end;
                     self.remove_last_segment();
-                    self.parse_relative_path()
+                    self.parse_relative_path::<true>()
                 }
             }
         } else {
@@ -1492,12 +1492,14 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 self.parse_path_or_authority()
             } else {
                 self.output_positions.authority_end = 0;
-                self.parse_relative_path()
+                self.parse_relative_path::<false>()
             }
         }
     }
 
-    fn parse_relative_path(&mut self) -> Result<(), IriParseError> {
+    fn parse_relative_path<const REMOVE_DOT_SEGMENTS: bool>(
+        &mut self,
+    ) -> Result<(), IriParseError> {
         while let Some(c) = self.input.front() {
             if matches!(c, '/' | '?' | '#') {
                 break;
@@ -1505,7 +1507,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             self.input.next();
             self.read_url_codepoint_or_echar(c, |c| is_iunreserved_or_sub_delims(c) || c == '@')?;
         }
-        self.parse_path()
+        self.parse_path::<REMOVE_DOT_SEGMENTS>()
     }
 
     fn parse_relative_slash(&mut self, base: &IriRef<&'a str>) -> Result<(), IriParseError> {
@@ -1522,7 +1524,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             self.output.push('/');
             self.output_positions.scheme_end = base.positions.scheme_end;
             self.output_positions.authority_end = base.positions.authority_end;
-            self.parse_path()
+            self.parse_path::<true>()
         }
     }
 
@@ -1654,24 +1656,24 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             }
             Some('/') => {
                 self.output.push('/');
-                self.parse_path()
+                self.parse_path::<false>()
             }
             Some(c) => {
                 self.read_url_codepoint_or_echar(c, |c| {
                     is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
                 })?;
-                self.parse_path()
+                self.parse_path::<false>()
             }
         }
     }
 
-    fn parse_path(&mut self) -> Result<(), IriParseError> {
+    fn parse_path<const REMOVE_DOT_SEGMENTS: bool>(&mut self) -> Result<(), IriParseError> {
         loop {
             let c = self.input.next();
             match c {
                 None | Some('/') | Some('?') | Some('#') => {
                     let output_str = self.output.as_str();
-                    if !output_str.is_empty() {
+                    if REMOVE_DOT_SEGMENTS {
                         let output_path = &output_str[self.output_positions.authority_end..];
                         if output_path.ends_with("/..") {
                             self.output.truncate(self.output.len() - 3);
@@ -1692,8 +1694,8 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     // We validate that the path does not start with "//" and is ambiguous with an authority
                     // It can happen after resolving ./ and ../
                     let output_str = self.output.as_str();
-                    if !UNCHECKED
-                        && !output_str.is_empty()
+                    if REMOVE_DOT_SEGMENTS
+                        && !UNCHECKED
                         && output_str[self.output_positions.authority_end..].starts_with("//")
                         && self.output_positions.authority_end == self.output_positions.scheme_end
                     {
