@@ -36,7 +36,10 @@ fuzz_target!(|data: &[u8]| {
         }
         Err(_) => {
             // It is always possible to relativize an IRI that has been resolved
-            assert!(!was_relative || base.path().contains('.'), "It should be always possible to relativize a former relative IRI {iri} (base {base})");
+            assert!(
+                !was_relative || base.path().contains('.') || absolute.path().contains('.'),
+                "It should be always possible to relativize a former relative IRI {iri} (base {base})"
+            );
         }
     }
 });

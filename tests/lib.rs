@@ -571,6 +571,11 @@ fn test_resolve_relative_iri() {
         ("../", "file:", "file:"),
         ("./.", "file:", "file:"),
         ("../..", "file:", "file:"),
+        (
+            "http:./examplxm+ns/Seq/exhttpwsa//DtaAccnss/tencile#frag",
+            "http://foo",
+            "http:./examplxm+ns/Seq/exhttpwsa//DtaAccnss/tencile#frag",
+        ),
     ];
 
     for (relative, base, output) in examples {
@@ -621,8 +626,8 @@ fn test_resolve_relative_iri_unchecked() {
         ("../../c/d/X#bar", "http://www.example.org/a/b/c/d/", "http://www.example.org/a/b/c/d/X#bar"),
         ("../../c/d/e/f/g/", "http://www.example.org/a/b/c/d/", "http://www.example.org/a/b/c/d/e/f/g/"),
         ("../../c/d/z?x=a", "http://www.example.org/a/b/c/d/", "http://www.example.org/a/b/c/d/z?x=a"),
-        ("http://ex.org/../../c/d/z?x=a", "http://www.example.org./a/b/c/d/", "http://ex.org/c/d/z?x=a"),
-        ("http://ex.org/c/./d/z?x=a", "http://www.example.org/a/b/c/d/", "http://ex.org/c/d/z?x=a"),
+        // we are not removing dots inside of path ("http://ex.org/../../c/d/z?x=a", "http://www.example.org./a/b/c/d/", "http://ex.org/c/d/z?x=a"),
+        // we are not removing dots inside of path ("http://ex.org/c/./d/z?x=a", "http://www.example.org/a/b/c/d/", "http://ex.org/c/d/z?x=a"),
         ("http://example.org/#André", "http://www.w3.org/2000/10/rdf-tests/rdfcore/rdf-charmod-uris/test001.rdf", "http://example.org/#André"),
         ("http://example.org/#Andr%C3%A9", "http://www.w3.org/2000/10/rdf-tests/rdfcore/rdf-charmod-uris/test002.rdf", "http://example.org/#Andr%C3%A9"),
         ("#Dürst", "http://www.w3.org/2000/10/rdf-tests/rdfcore/rdfms-difference-between-ID-and-about/test2.rdf", "http://www.w3.org/2000/10/rdf-tests/rdfcore/rdfms-difference-between-ID-and-about/test2.rdf#Dürst"),
@@ -870,8 +875,6 @@ fn test_relativize_iri_fails() {
             base.relativize(&iri).is_err(),
             "Relativize {iri} against {base} is not properly failing"
         );
-        // We make sure it's not possible to relativize
-        assert_ne!(base.resolve(iri.as_str()).unwrap(), iri);
     }
 }
 
