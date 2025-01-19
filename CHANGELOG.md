@@ -1,11 +1,17 @@
 # Changelog
 
+## [0.2.11] - 2025-01-19
+
+### Changed
+
+- Resolve: do not remove dot segment if a scheme or an authority is present for consistency with parse.
+
 ## [0.2.10] - 2025-01-17
 
 ### Changed
 
-- Resolve: properly normalize relative paths starting with `.` or `..`
-- Relativize: make use of `.` and do not always use absolute path if there is a candidate relative path containing `/`
+- Resolve: properly normalize relative paths starting with `.` or `..`.
+- Relativize: make use of `.` and do not always use absolute path if there is a candidate relative path containing `/`.
 
 ## [0.2.9] - 2024-12-21
 

@@ -1,6 +1,6 @@
 [package]
 name = "oxiri"
-version = "0.2.10"
+version = "0.2.11"
 authors = ["Tpt <thomas@pellissier-tanon.fr>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
