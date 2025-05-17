@@ -1924,7 +1924,6 @@ mod tests {
 }
 
 // Borsh tests
-
 #[cfg(feature = "borsh")]
 mod borsh_tests {
     use super::*;
