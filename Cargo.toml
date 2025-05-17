@@ -13,7 +13,11 @@ Simple and fast implementation of IRI validation and relative IRI resolution
 edition = "2021"
 rust-version = "1.60"
 
+[features]
+borsh = ["dep:borsh"]
+
 [dependencies]
+borsh = { version = "1.5.7", optional = true, features = ["derive"] }
 serde = { version = "1.0.166", optional = true }
 
 [dev-dependencies]
