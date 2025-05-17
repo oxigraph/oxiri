@@ -4,6 +4,8 @@
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
@@ -37,6 +39,7 @@ use std::str::{Chars, FromStr};
 /// # Result::<(), oxiri::IriParseError>::Ok(())
 /// ```
 #[derive(Clone, Copy)]
+#[cfg_attr(feature = "borsh", derive(BorshDeserialize, BorshSerialize))]
 pub struct IriRef<T> {
     iri: T,
     positions: IriElementsPositions,
@@ -538,6 +541,7 @@ impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for IriRef
 /// # Result::<(), oxiri::IriParseError>::Ok(())
 /// ```
 #[derive(Clone, Copy)]
+#[cfg_attr(feature = "borsh", derive(BorshDeserialize, BorshSerialize))]
 pub struct Iri<T>(IriRef<T>);
 
 impl<T: Deref<Target = str>> Iri<T> {
@@ -1903,4 +1907,45 @@ fn is_unreserved_or_sub_delims(c: char) -> bool {
         | '_'
         | '~'
     )
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_iri_parse() {
+        let iri = Iri::parse("https://example.com/path?query=value#fragment");
+        assert_eq!(iri.unwrap().as_str(), "https://example.com/path?query=value#fragment");
+    }
+}
+
+// Borsh tests
+
+#[cfg(feature = "borsh")]
+mod borsh_tests {
+    use super::*;
+
+    #[test]
+    fn test_iri_borsh_serialize() {
+        let iri = Iri::parse("https://example.com/path?query=value#fragment");
+        let serialized = iri.unwrap().serialize();
+        let deserialized = Iri::deserialize(&serialized);
+        assert_eq!(deserialized.unwrap().as_str(), "https://example.com/path?query=value#fragment");
+    }
+}
+
+// Serde tests
+#[cfg(feature = "serde")]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn test_iri_serde_serialize() {
+        let iri = Iri::parse("https://example.com/path?query=value#fragment");
+        let serialized = serde_json::to_string(&iri.unwrap()).unwrap();
+        let deserialized = serde_json::from_str(&serialized);
+        assert_eq!(deserialized.unwrap().as_str(), "https://example.com/path?query=value#fragment");
+    }
 }
