@@ -2,10 +2,10 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(unsafe_code)]
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(feature = "borsh")]
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
@@ -1909,7 +1909,6 @@ fn is_unreserved_or_sub_delims(c: char) -> bool {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1917,7 +1916,10 @@ mod tests {
     #[test]
     fn test_iri_parse() {
         let iri = Iri::parse("https://example.com/path?query=value#fragment");
-        assert_eq!(iri.unwrap().as_str(), "https://example.com/path?query=value#fragment");
+        assert_eq!(
+            iri.unwrap().as_str(),
+            "https://example.com/path?query=value#fragment"
+        );
     }
 }
 
@@ -1932,7 +1934,10 @@ mod borsh_tests {
         let iri = Iri::parse("https://example.com/path?query=value#fragment");
         let serialized = iri.unwrap().serialize();
         let deserialized = Iri::deserialize(&serialized);
-        assert_eq!(deserialized.unwrap().as_str(), "https://example.com/path?query=value#fragment");
+        assert_eq!(
+            deserialized.unwrap().as_str(),
+            "https://example.com/path?query=value#fragment"
+        );
     }
 }
 
@@ -1946,6 +1951,9 @@ mod serde_tests {
         let iri = Iri::parse("https://example.com/path?query=value#fragment");
         let serialized = serde_json::to_string(&iri.unwrap()).unwrap();
         let deserialized = serde_json::from_str(&serialized);
-        assert_eq!(deserialized.unwrap().as_str(), "https://example.com/path?query=value#fragment");
+        assert_eq!(
+            deserialized.unwrap().as_str(),
+            "https://example.com/path?query=value#fragment"
+        );
     }
 }
