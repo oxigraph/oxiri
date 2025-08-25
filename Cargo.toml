@@ -11,15 +11,14 @@ description = """
 Simple and fast implementation of IRI validation and relative IRI resolution
 """
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.74"
 
 [dependencies]
-serde = { version = "1.0.166", optional = true }
+serde = { version = "1.0.217", optional = true }
 
 [dev-dependencies]
 codspeed-criterion-compat = "3.0.2"
 serde_test = "1"
-clap = "4"
 
 [[bench]]
 name = "lib"
