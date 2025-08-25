@@ -676,9 +676,7 @@ impl<T: Deref<Target = str>> Iri<T> {
             || abs_path
                 // Might confuse with a scheme
                 .split_once(':')
-                .map_or(false, |(candidate_scheme, _)| {
-                    !candidate_scheme.contains('/')
-                })
+                .is_some_and(|(candidate_scheme, _)| !candidate_scheme.contains('/'))
         {
             return Ok(IriRef {
                 iri: abs.0.to_string(),
@@ -1782,9 +1780,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     fn read_echar(&mut self) -> Result<(), IriParseError> {
         let c1 = self.input.next();
         let c2 = self.input.next();
-        if c1.map_or(false, |c| c.is_ascii_hexdigit())
-            && c2.map_or(false, |c| c.is_ascii_hexdigit())
-        {
+        if c1.is_some_and(|c| c.is_ascii_hexdigit()) && c2.is_some_and(|c| c.is_ascii_hexdigit()) {
             self.output.push('%');
             self.output.push(c1.unwrap());
             self.output.push(c2.unwrap());
