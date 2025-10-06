@@ -17,7 +17,7 @@ rust-version = "1.74"
 serde = { version = "1.0.217", optional = true }
 
 [dev-dependencies]
-codspeed-criterion-compat = "3.0.2"
+codspeed-criterion-compat = "4.0.1"
 serde_test = "1"
 
 [[bench]]
