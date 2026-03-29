@@ -212,23 +212,12 @@ fn test_wrong_relative_parsing() {
         "http://w3c.org:80path1/path2",
         // relative IRIs do not accept colon in the first path segment
         ":a/b",
-        // iprivate characters are not allowed in path not in fragment
-        "http://example.com/\u{E000}",
-        "\u{E000}",
-        "http://example.com/#\u{E000}",
-        "#\u{E000}",
         // bad characters
         "//\u{FFFF}",
         "?\u{FFFF}",
         "/\u{0000}",
         "?\u{0000}",
         "#\u{0000}",
-        "/\u{E000}",
-        "/\u{F8FF}",
-        "/\u{F0000}",
-        "/\u{FFFFD}",
-        "/\u{100000}",
-        "/\u{10FFFD}",
         "?\u{FDEF}",
         "?\u{FFFF}",
         "/\u{FDEF}",
@@ -253,9 +242,6 @@ fn test_wrong_relative_parsing() {
         "http://[::1]a/",
         // fuzzing bugs
         "//͏@[]",
-        "//@@",
-        "$:",
-        "-:",
         ":",
         // IPvFuture
         "http://[]",
@@ -272,7 +258,7 @@ fn test_wrong_relative_parsing() {
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
     for e in examples {
         let result = base.resolve(e);
-        assert!(result.is_err(), "{} is wrongly considered valid", e);
+        assert!(result.is_err(), "{:?} is wrongly considered valid", e);
     }
 }
 
@@ -575,6 +561,21 @@ fn test_resolve_relative_iri() {
             "http:./examplxm+ns/Seq/exhttpwsa//DtaAccnss/tencile#frag",
             "http://foo",
             "http:./examplxm+ns/Seq/exhttpwsa//DtaAccnss/tencile#frag",
+        ),
+        // colon is permitted in paths - note that ' forces this to not be a scheme
+        (
+            "'http:/foo",
+            "http://base.test",
+            "http://base.test/'http:/foo",
+        ),
+        // @ is allowed in paths
+        ("@me/foo", "http://base.test", "http://base.test/@me/foo"),
+        // maximum permitted codepoint
+        // note that Chrome actually permits U+10FFFF which is a noncharacter
+        (
+            "path\u{10FFFD}",
+            "http://base.test/",
+            "http://base.test/path\u{10FFFD}",
         ),
     ];
 

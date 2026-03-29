@@ -1503,7 +1503,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 break;
             }
             self.input.next();
-            self.read_url_codepoint_or_echar(c, |c| is_iunreserved_or_sub_delims(c) || c == '@')?;
+            self.read_url_codepoint_or_echar(c, is_url_codepoint)?;
         }
         self.parse_path::<REMOVE_DOT_SEGMENTS>()
     }
@@ -1544,9 +1544,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     return self.parse_host();
                 }
                 Some(c) => {
-                    self.read_url_codepoint_or_echar(c, |c| {
-                        is_iunreserved_or_sub_delims(c) || c == ':'
-                    })?;
+                    self.read_url_codepoint_or_echar(c, is_url_codepoint)?;
                 }
             }
         }
@@ -1609,7 +1607,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                         self.output_positions.authority_end = self.output.len();
                         return self.parse_path_start(c);
                     }
-                    Some(c) => self.read_url_codepoint_or_echar(c, is_iunreserved_or_sub_delims)?,
+                    Some(c) => self.read_url_codepoint_or_echar(c, is_url_codepoint)?,
                 }
             }
         }
@@ -1657,9 +1655,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 self.parse_path::<false>()
             }
             Some(c) => {
-                self.read_url_codepoint_or_echar(c, |c| {
-                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
-                })?;
+                self.read_url_codepoint_or_echar(c, is_url_codepoint)?;
                 self.parse_path::<false>()
             }
         }
@@ -1715,9 +1711,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                         return Ok(());
                     }
                 }
-                Some(c) => self.read_url_codepoint_or_echar(c, |c| {
-                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
-                })?,
+                Some(c) => self.read_url_codepoint_or_echar(c, is_url_codepoint)?,
             }
         }
     }
@@ -1730,7 +1724,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 return self.parse_fragment();
             } else {
                 self.read_url_codepoint_or_echar(c, |c| {
-                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?' | '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
+                    is_url_codepoint(c) || matches!(c, '/' | '?')
                 })?
             }
         }
@@ -1740,9 +1734,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
 
     fn parse_fragment(&mut self) -> Result<(), IriParseError> {
         while let Some(c) = self.input.next() {
-            self.read_url_codepoint_or_echar(c, |c| {
-                is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?')
-            })?;
+            self.read_url_codepoint_or_echar(c, |c| is_url_codepoint(c) || matches!(c, '/' | '?'))?;
         }
         Ok(())
     }
@@ -1838,7 +1830,18 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     }
 }
 
-fn is_iunreserved_or_sub_delims(c: char) -> bool {
+// https://url.spec.whatwg.org/#url-code-points
+// > The URL code points are ASCII alphanumeric, U+0021 (!), U+0024 ($),
+// > U+0026 (&), U+0027 ('), U+0028 LEFT PARENTHESIS, U+0029 RIGHT PARENTHESIS,
+// > U+002A (*), U+002B (+), U+002C (,), U+002D (-), U+002E (.), U+002F (/),
+// > U+003A (:), U+003B (;), U+003D (=), U+003F (?), U+0040 (@), U+005F (_),
+// > U+007E (~), and code points in the range U+00A0 to U+10FFFD, inclusive,
+// > excluding surrogates and noncharacters.
+//
+// Note that:
+// - / is excluded in order to break up path segments
+// - ? is excluded to parse the query separately
+fn is_url_codepoint(c: char) -> bool {
     matches!(c,
         'a'..='z'
         | 'A'..='Z'
@@ -1854,27 +1857,62 @@ fn is_iunreserved_or_sub_delims(c: char) -> bool {
         | ','
         | '-'
         | '.'
+        | ':'
         | ';'
         | '='
+        | '@'
         | '_'
-        | '~'
-        | '\u{A0}'..='\u{D7FF}'
-        | '\u{F900}'..='\u{FDCF}'
-        | '\u{FDF0}'..='\u{FFEF}'
-        | '\u{10000}'..='\u{1FFFD}'
-        | '\u{20000}'..='\u{2FFFD}'
-        | '\u{30000}'..='\u{3FFFD}'
-        | '\u{40000}'..='\u{4FFFD}'
-        | '\u{50000}'..='\u{5FFFD}'
-        | '\u{60000}'..='\u{6FFFD}'
-        | '\u{70000}'..='\u{7FFFD}'
-        | '\u{80000}'..='\u{8FFFD}'
-        | '\u{90000}'..='\u{9FFFD}'
-        | '\u{A0000}'..='\u{AFFFD}'
-        | '\u{B0000}'..='\u{BFFFD}'
-        | '\u{C0000}'..='\u{CFFFD}'
-        | '\u{D0000}'..='\u{DFFFD}'
-        | '\u{E1000}'..='\u{EFFFD}'
+        | '~')
+        || (matches!(c, '\u{A0}'..='\u{10FFFD}') && !is_noncharacter(c))
+    // note: we do not need to check for surrogates because they are
+    // not permitted as 'char's in Rust
+}
+
+// https://infra.spec.whatwg.org/#noncharacter
+// > A noncharacter is a code point that is in the range U+FDD0 to U+FDEF, inclusive,
+// > or U+FFFE, U+FFFF, U+1FFFE, U+1FFFF, U+2FFFE, U+2FFFF, U+3FFFE, U+3FFFF, U+4FFFE,
+// > U+4FFFF, U+5FFFE, U+5FFFF, U+6FFFE, U+6FFFF, U+7FFFE, U+7FFFF, U+8FFFE, U+8FFFF,
+// > U+9FFFE, U+9FFFF, U+AFFFE, U+AFFFF, U+BFFFE, U+BFFFF, U+CFFFE, U+CFFFF, U+DFFFE,
+// > U+DFFFF, U+EFFFE, U+EFFFF, U+FFFFE, U+FFFFF, U+10FFFE, or U+10FFFF.
+fn is_noncharacter(c: char) -> bool {
+    matches!(
+        c,
+        '\u{FDD0}'
+            ..='\u{FDEF}'
+                | '\u{FFFE}'
+                | '\u{FFFF}'
+                | '\u{1FFFE}'
+                | '\u{1FFFF}'
+                | '\u{2FFFE}'
+                | '\u{2FFFF}'
+                | '\u{3FFFE}'
+                | '\u{3FFFF}'
+                | '\u{4FFFE}'
+                | '\u{4FFFF}'
+                | '\u{5FFFE}'
+                | '\u{5FFFF}'
+                | '\u{6FFFE}'
+                | '\u{6FFFF}'
+                | '\u{7FFFE}'
+                | '\u{7FFFF}'
+                | '\u{8FFFE}'
+                | '\u{8FFFF}'
+                | '\u{9FFFE}'
+                | '\u{9FFFF}'
+                | '\u{AFFFE}'
+                | '\u{AFFFF}'
+                | '\u{BFFFE}'
+                | '\u{BFFFF}'
+                | '\u{CFFFE}'
+                | '\u{CFFFF}'
+                | '\u{DFFFE}'
+                | '\u{DFFFF}'
+                | '\u{EFFFE}'
+                | '\u{EFFFF}'
+                | '\u{FFFFE}'
+                | '\u{FFFFF}'
+                | '\u{10FFFE}'
+                | '\u{10FFFF}'
     )
 }
 
