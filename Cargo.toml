@@ -14,6 +14,7 @@ edition = "2021"
 rust-version = "1.74"
 
 [dependencies]
+memchr = "2"
 serde = { version = "1.0.217", optional = true }
 
 [dev-dependencies]

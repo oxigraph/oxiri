@@ -13,6 +13,7 @@ use std::hash::{Hash, Hasher};
 use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
 use std::str::{Chars, FromStr};
+use memchr::{memchr, memchr3};
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI reference.
 ///
@@ -1341,6 +1342,16 @@ impl ParserInput<'_> {
     fn starts_with(&self, c: char) -> bool {
         self.value.as_str().starts_with(c)
     }
+
+    #[inline]
+    fn slice_until3(&mut self, c1: u8, c2: u8, c3: u8) -> &str {
+        let str = self.value.as_str();
+        let index = memchr3(c1, c2, c3, str.as_bytes()).unwrap_or_else(|| str.len());
+        let output = &str[..index];
+        self.value = str[index..].chars();
+        self.position += output.len();
+        output
+    }
 }
 
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
@@ -1527,111 +1538,55 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     }
 
     fn parse_authority(&mut self) -> Result<(), IriParseError> {
-        // @ are not allowed in IRI authorities so not need to take care of ambiguities
-        loop {
-            let c = self.input.next();
-            match c {
-                Some('@') => {
-                    self.output.push('@');
-                    return self.parse_host();
+        let authority = self.input.slice_until3(b'/', b'?', b'#');
+        if !UNCHECKED {
+            let mut remaining_authority = authority;
+            if let Some(username_index) = memchr(b'@', authority.as_bytes()) {
+                let username = &authority[..username_index];
+                remaining_authority = &authority[username_index + 1..];
+                // TODO: validate is_iunreserved_or_sub_delims(c) || c == ':'
+            }
+            if let Some(ip) = remaining_authority.strip_prefix('[') {
+                // IP v6 or vfuture
+                let Some(end_of_ip_index) = memchr(b']', ip.as_bytes()) else {
+                    // TODO: better error?
+                    return Err(IriParseError { kind: IriParseErrorKind::InvalidHostCharacter('[') });
+                };
+                let ip = &ip[..end_of_ip_index];
+                let remaining_authority = &remaining_authority[end_of_ip_index + 2..];
+                if ip.starts_with('v') || ip.starts_with('V') {
+                    Self::validate_ip_v_future(ip)?
+                } else if let Err(error) = Ipv6Addr::from_str(ip) {
+                    return Err(IriParseError { kind: IriParseErrorKind::InvalidHostIp(error) });
                 }
-                None | Some('[') | Some('/') | Some('?') | Some('#') => {
-                    self.input = ParserInput {
-                        value: self.iri[self.input_scheme_end + 2..].chars(),
-                        position: self.input_scheme_end + 2,
+                if !remaining_authority.is_empty() {
+                    let Some(port) = remaining_authority.strip_prefix(':') else {
+                        return Err(IriParseError {
+                            kind: IriParseErrorKind::InvalidHostCharacter(remaining_authority.chars().next().unwrap()),
+                        });
                     };
-                    self.output.truncate(self.output_positions.scheme_end + 2);
-                    return self.parse_host();
-                }
-                Some(c) => {
-                    self.read_url_codepoint_or_echar(c, |c| {
-                        is_iunreserved_or_sub_delims(c) || c == ':'
-                    })?;
-                }
-            }
-        }
-    }
-
-    fn parse_host(&mut self) -> Result<(), IriParseError> {
-        if self.input.starts_with('[') {
-            // IP v6
-            let start_position = self.input.position;
-            while let Some(c) = self.input.next() {
-                self.output.push(c);
-                if c == ']' {
-                    let ip = &self.iri[start_position + 1..self.input.position - 1];
-                    if !UNCHECKED {
-                        if ip.starts_with('v') || ip.starts_with('V') {
-                            self.validate_ip_v_future(ip)?;
-                        } else if let Err(error) = Ipv6Addr::from_str(ip) {
-                            return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
-                        }
-                    }
-
-                    let c = self.input.next();
-                    return match c {
-                        Some(':') => {
-                            self.output.push(':');
-                            self.parse_port()
-                        }
-                        None | Some('/') | Some('?') | Some('#') => {
-                            self.output_positions.authority_end = self.output.len();
-                            self.parse_path_start(c)
-                        }
-                        Some(c) => {
-                            if UNCHECKED {
-                                self.output.push(c);
-                                continue;
-                            } else {
-                                self.parse_error(IriParseErrorKind::InvalidHostCharacter(c))
-                            }
-                        }
-                    };
-                }
-            }
-            if UNCHECKED {
-                // We consider it's valid even if it's not finished
-                self.output_positions.authority_end = self.output.len();
-                self.parse_path_start(None)
-            } else {
-                self.parse_error(IriParseErrorKind::InvalidHostCharacter('['))
-            }
-        } else {
-            // Other host
-            loop {
-                let c = self.input.next();
-                match c {
-                    Some(':') => {
-                        self.output.push(':');
-                        return self.parse_port();
-                    }
-                    None | Some('/') | Some('?') | Some('#') => {
-                        self.output_positions.authority_end = self.output.len();
-                        return self.parse_path_start(c);
-                    }
-                    Some(c) => self.read_url_codepoint_or_echar(c, is_iunreserved_or_sub_delims)?,
-                }
-            }
-        }
-    }
-
-    fn parse_port(&mut self) -> Result<(), IriParseError> {
-        loop {
-            let c = self.input.next();
-            match c {
-                Some('/') | Some('?') | Some('#') | None => {
-                    self.output_positions.authority_end = self.output.len();
-                    return self.parse_path_start(c);
-                }
-                Some(c) => {
-                    if UNCHECKED || c.is_ascii_digit() {
-                        self.output.push(c)
-                    } else {
+                    if let Some(c) = port.chars().find(|c| !c.is_ascii_digit()) {
                         return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c));
                     }
                 }
+            } else {
+                if let Some(port_index) = memchr(b':', remaining_authority.as_bytes()) {
+                    let port = &remaining_authority[port_index + 1..];
+                    remaining_authority = &remaining_authority[..port_index];
+                        if let Some(c) = port.chars().find(|c| !c.is_ascii_digit()) {
+                            return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c));
+                        }
+                }
+                let host = remaining_authority;
+                if let Some(c) = host.chars().find(|c| !is_iunreserved_or_sub_delims(*c)) {
+                    return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c));
+                }
             }
         }
+        self.output.push_str(authority);
+        self.output_positions.authority_end = self.output.len();
+        let c= self.input.next();
+        self.parse_path_start(c)
     }
 
     fn parse_path_start(&mut self, c: Option<char>) -> Result<(), IriParseError> {
@@ -1799,14 +1754,14 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     }
 
     // IPvFuture      = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
-    fn validate_ip_v_future(&self, ip: &str) -> Result<(), IriParseError> {
+    fn validate_ip_v_future(ip: &str) -> Result<(), IriParseError> {
         let mut chars = ip.chars();
 
         let c = chars.next().ok_or(IriParseError {
             kind: IriParseErrorKind::InvalidHostCharacter(']'),
         })?;
         if !matches!(c, 'v' | 'V') {
-            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+            return Err(IriParseError { kind: IriParseErrorKind::InvalidHostCharacter(c)});
         };
 
         let mut with_a_version = false;
@@ -1816,21 +1771,21 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
             } else if c.is_ascii_hexdigit() {
                 with_a_version = true;
             } else {
-                return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+                return Err(IriParseError { kind:IriParseErrorKind::InvalidHostCharacter(c)});
             }
         }
         if !with_a_version {
-            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(
+            return Err(IriParseError { kind:IriParseErrorKind::InvalidHostCharacter(
                 chars.next().unwrap_or(']'),
-            ));
+            )});
         }
 
         if chars.as_str().is_empty() {
-            return self.parse_error(IriParseErrorKind::InvalidHostCharacter(']'));
+            return Err(IriParseError { kind:IriParseErrorKind::InvalidHostCharacter(']')});
         };
         for c in chars {
             if !is_unreserved_or_sub_delims(c) && c != ':' {
-                return self.parse_error(IriParseErrorKind::InvalidHostCharacter(c));
+                return Err(IriParseError { kind :IriParseErrorKind::InvalidHostCharacter(c)});
             }
         }
 
