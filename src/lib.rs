@@ -2,6 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
+use memchr::{memchr, memchr2, memchr3};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -68,8 +69,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// IriRef::parse_unchecked("//foo.com/bar/baz");
     /// ```
     pub fn parse_unchecked(iri: T) -> Self {
-        let positions =
-            IriParser::<_, true>::parse(&iri, None, &mut VoidOutputBuffer::default()).unwrap();
+        let positions = find_iri_ref_positions(iri.as_ref());
         Self { iri, positions }
     }
 
@@ -565,7 +565,8 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Iri::parse_unchecked("http://foo.com/bar/baz");
     /// ```
     pub fn parse_unchecked(iri: T) -> Self {
-        Iri(IriRef::parse_unchecked(iri))
+        let positions = find_iri_positions(iri.as_ref());
+        Self(IriRef { iri, positions })
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -1901,4 +1902,73 @@ fn is_unreserved_or_sub_delims(c: char) -> bool {
         | '_'
         | '~'
     )
+}
+
+fn find_iri_positions(iri: &str) -> IriElementsPositions {
+    let iri = iri.as_bytes();
+    let scheme_end = memchr(b':', iri).map_or(iri.len(), |l| l + 1);
+    find_iri_positions_knowing_scheme_end(iri, scheme_end)
+}
+
+fn find_iri_positions_knowing_scheme_end(iri: &[u8], scheme_end: usize) -> IriElementsPositions {
+    let path_end = memchr2(b'?', b'#', &iri[scheme_end..]).map_or(iri.len(), |l| scheme_end + l);
+    let query_end = memchr(b'#', &iri[path_end..]).map_or(iri.len(), |l| path_end + l);
+    let authority_end =
+        if scheme_end + 2 <= path_end && iri[scheme_end] == b'/' && iri[scheme_end + 1] == b'/' {
+            memchr(b'/', &iri[scheme_end + 2..path_end]).map_or(path_end, |l| scheme_end + 2 + l)
+        } else {
+            scheme_end
+        };
+    IriElementsPositions {
+        scheme_end,
+        authority_end,
+        path_end,
+        query_end,
+    }
+}
+
+fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
+    let iri = iri.as_bytes();
+    match iri.first().copied() {
+        Some(b'/') => {
+            // starting with path
+            find_iri_positions_knowing_scheme_end(iri, 0)
+        }
+        Some(b'?') => {
+            // query + fragment only
+            let query_end = memchr(b'#', iri).unwrap_or(iri.len());
+            IriElementsPositions {
+                scheme_end: 0,
+                authority_end: 0,
+                path_end: 0,
+                query_end,
+            }
+        }
+        Some(b'#') | None => {
+            // fragment only or empty
+            IriElementsPositions {
+                scheme_end: 0,
+                authority_end: 0,
+                path_end: 0,
+                query_end: 0,
+            }
+        }
+        _ => {
+            // let's guess if we start with a scheme or a path
+            // for that we need to find the first character that is ':', '?', '/' or '#' and see if it's ':'
+            // code is a bit painful because there is no memchr4
+            let scheme_end = memchr3(b':', b'?', b'/', iri).map_or(0, |index| {
+                if iri[index] == b':' {
+                    if memchr(b'#', &iri[..index]).is_some() {
+                        0 // actually not a scheme but path + fragment
+                    } else {
+                        index + 1
+                    }
+                } else {
+                    0
+                }
+            });
+            find_iri_positions_knowing_scheme_end(iri, scheme_end)
+        }
+    }
 }
