@@ -1838,6 +1838,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     }
 }
 
+#[inline(always)]
 fn is_iunreserved_or_sub_delims(c: char) -> bool {
     matches!(c,
         'a'..='z'
@@ -1878,6 +1879,7 @@ fn is_iunreserved_or_sub_delims(c: char) -> bool {
     )
 }
 
+#[inline(always)]
 fn is_unreserved_or_sub_delims(c: char) -> bool {
     matches!(c,
         'a'..='z'
