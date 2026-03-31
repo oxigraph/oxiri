@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr3};
+use memchr::{memchr, memchr2, memchr3, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -57,7 +57,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn parse(iri: T) -> Result<Self, IriParseError> {
-        let positions = IriParser::<_, false>::parse(&iri, None, &mut VoidOutputBuffer::default())?;
+        let positions = IriParser::parse(&iri, None, &mut VoidOutputBuffer::default())?;
         Ok(Self { iri, positions })
     }
 
@@ -88,7 +88,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
         let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions = IriParser::<_, false>::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
+        let positions = IriParser::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
         Ok(IriRef {
             iri: target_buffer,
             positions,
@@ -105,13 +105,10 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_unchecked(&self, iri: &str) -> IriRef<String> {
-        let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions =
-            IriParser::<_, true>::parse(iri, Some(self.as_ref()), &mut target_buffer).unwrap();
-        IriRef {
-            iri: target_buffer,
-            positions,
-        }
+        let reference = IriRef::parse_unchecked(iri);
+        let mut iri = String::new();
+        let positions = resolve(self, &reference, &mut iri);
+        IriRef { iri, positions }
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -131,7 +128,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::<_, false>::parse(iri, Some(self.as_ref()), target_buffer)?;
+        IriParser::parse(iri, Some(self.as_ref()), target_buffer)?;
         Ok(())
     }
 
@@ -146,7 +143,8 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into_unchecked(&self, iri: &str, target_buffer: &mut String) {
-        IriParser::<_, true>::parse(iri, Some(self.as_ref()), target_buffer).unwrap();
+        let reference = IriRef::parse_unchecked(iri);
+        resolve(self, &reference, target_buffer);
     }
 
     /// Returns an `IriRef` borrowing this IRI's text.
@@ -1347,7 +1345,7 @@ impl ParserInput<'_> {
 /// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
 ///
 /// A sub function takes care of each state
-struct IriParser<'a, O: OutputBuffer, const UNCHECKED: bool> {
+struct IriParser<'a, O: OutputBuffer> {
     iri: &'a str,
     base: Option<IriRef<&'a str>>,
     input: ParserInput<'a>,
@@ -1356,7 +1354,7 @@ struct IriParser<'a, O: OutputBuffer, const UNCHECKED: bool> {
     input_scheme_end: usize,
 }
 
-impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
+impl<'a, O: OutputBuffer> IriParser<'a, O> {
     fn parse(
         iri: &'a str,
         base: Option<IriRef<&'a str>>,
@@ -1385,11 +1383,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
     fn parse_scheme_start(&mut self) -> Result<(), IriParseError> {
         match self.input.front() {
             Some(':') => {
-                if UNCHECKED {
-                    self.parse_scheme()
-                } else {
                     self.parse_error(IriParseErrorKind::NoScheme)
-                }
             }
             Some(c) if c.is_ascii_alphabetic() => self.parse_scheme(),
             _ => self.parse_relative(),
@@ -1561,13 +1555,11 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                 self.output.push(c);
                 if c == ']' {
                     let ip = &self.iri[start_position + 1..self.input.position - 1];
-                    if !UNCHECKED {
                         if ip.starts_with('v') || ip.starts_with('V') {
                             self.validate_ip_v_future(ip)?;
                         } else if let Err(error) = Ipv6Addr::from_str(ip) {
                             return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
                         }
-                    }
 
                     let c = self.input.next();
                     return match c {
@@ -1580,23 +1572,12 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                             self.parse_path_start(c)
                         }
                         Some(c) => {
-                            if UNCHECKED {
-                                self.output.push(c);
-                                continue;
-                            } else {
                                 self.parse_error(IriParseErrorKind::InvalidHostCharacter(c))
-                            }
                         }
                     };
                 }
             }
-            if UNCHECKED {
-                // We consider it's valid even if it's not finished
-                self.output_positions.authority_end = self.output.len();
-                self.parse_path_start(None)
-            } else {
                 self.parse_error(IriParseErrorKind::InvalidHostCharacter('['))
-            }
         } else {
             // Other host
             loop {
@@ -1625,7 +1606,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     return self.parse_path_start(c);
                 }
                 Some(c) => {
-                    if UNCHECKED || c.is_ascii_digit() {
+                    if c.is_ascii_digit() {
                         self.output.push(c)
                     } else {
                         return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c));
@@ -1694,7 +1675,6 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
                     // It can happen after resolving ./ and ../
                     let output_str = self.output.as_str();
                     if REMOVE_DOT_SEGMENTS
-                        && !UNCHECKED
                         && output_str[self.output_positions.authority_end..].starts_with("//")
                         && self.output_positions.authority_end == self.output_positions.scheme_end
                     {
@@ -1768,7 +1748,7 @@ impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
         c: char,
         valid: impl Fn(char) -> bool,
     ) -> Result<(), IriParseError> {
-        if UNCHECKED || valid(c) {
+        if  valid(c) {
             self.output.push(c);
             Ok(())
         } else if c == '%' {
@@ -1971,4 +1951,138 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
             find_iri_positions_knowing_scheme_end(iri, scheme_end)
         }
     }
+}
+
+/// Implement relative resolution transform: https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.2
+fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
+    base: &IriRef<T1>,
+    relative: &IriRef<T2>,
+    output_buffer: &mut String,
+) -> IriElementsPositions {
+    // TODO: apply write_path_without_dot_segments_to everywhere?
+    if relative.is_absolute() {
+        output_buffer.reserve_exact(relative.as_str().len());
+        output_buffer.push_str(relative.as_str());
+        relative.positions
+    } else if relative.positions.authority_end > 0 {
+        output_buffer.reserve_exact(base.positions.scheme_end + relative.iri.len());
+        output_buffer.push_str(&base.iri[..base.positions.scheme_end]);
+        output_buffer.push_str(&relative.iri);
+        IriElementsPositions {
+            scheme_end: base.positions.scheme_end,
+            authority_end: base.positions.scheme_end + relative.positions.authority_end,
+            path_end: base.positions.scheme_end + relative.positions.path_end,
+            query_end: base.positions.scheme_end + relative.positions.query_end,
+        }
+    } else if relative.positions.path_end > 0 {
+        if relative.iri.starts_with('/') {
+            output_buffer.reserve_exact(base.positions.authority_end + relative.iri.len());
+            output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+            write_path_without_dot_segments_to(
+                &relative.iri[..relative.positions.path_end],
+                output_buffer,
+            );
+            let path_end = output_buffer.len();
+            output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+            IriElementsPositions {
+                scheme_end: base.positions.scheme_end,
+                authority_end: base.positions.authority_end,
+                path_end,
+                query_end: path_end + (relative.positions.query_end - relative.positions.path_end),
+            }
+        } else {
+            let merged_paths = merge_paths(base, relative.path());
+            output_buffer.reserve_exact(
+                base.positions.authority_end
+                    + merged_paths.len()
+                    + (relative.iri.len() - relative.positions.query_end),
+            );
+            output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+            write_path_without_dot_segments_to(&merged_paths, output_buffer);
+            let path_end = output_buffer.len();
+            output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+            IriElementsPositions {
+                scheme_end: base.positions.scheme_end,
+                authority_end: base.positions.authority_end,
+                path_end,
+                query_end: path_end + (relative.positions.query_end - relative.positions.path_end),
+            }
+        }
+    } else if relative.positions.query_end > 0 {
+        output_buffer.reserve_exact(base.positions.path_end + relative.iri.len());
+        output_buffer.push_str(&base.iri[..base.positions.path_end]);
+        output_buffer.push_str(&relative.iri);
+        IriElementsPositions {
+            scheme_end: base.positions.scheme_end,
+            authority_end: base.positions.authority_end,
+            path_end: base.positions.path_end,
+            query_end: base.positions.path_end + relative.positions.query_end,
+        }
+    } else {
+        output_buffer.reserve_exact(base.positions.query_end + relative.iri.len());
+        output_buffer.push_str(&base.iri[..base.positions.query_end]);
+        output_buffer.push_str(&relative.iri);
+        base.positions
+    }
+}
+
+/// Implement https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.3
+fn merge_paths<'a, T: Deref<Target = str>>(
+    base: &IriRef<T>,
+    relative_path: &'a str,
+) -> Cow<'a, str> {
+    let base_path = base.path();
+    if base.authority().is_some() && base_path.is_empty() {
+        let mut output = String::with_capacity(relative_path.len() + 1);
+        output.push('/');
+        output.push_str(relative_path);
+        Cow::Owned(output)
+    } else if let Some(last_slash_position) = memrchr(b'/', base_path.as_bytes()) {
+        let mut output = String::with_capacity(last_slash_position + relative_path.len() + 1);
+        output.push_str(&base_path[..last_slash_position]);
+        output.push('/');
+        output.push_str(relative_path);
+        Cow::Owned(output)
+    } else {
+        Cow::Borrowed(relative_path)
+    }
+}
+
+/// Implement https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.4
+fn write_path_without_dot_segments_to(mut input: &str, output: &mut String) {
+    let output_path_start = output.len();
+    while !input.is_empty() {
+        if let Some(rest) = input.strip_prefix("../") {
+            input = rest;
+        } else if let Some(rest) = input.strip_prefix("./") {
+            input = rest;
+        } else if input.starts_with("/./") {
+            input = &input[2..];
+        } else if input == "/." {
+            input = "/";
+        } else if input.starts_with("/../") {
+            input = &input[3..];
+            remove_last_segment(output, output_path_start);
+        } else if input == "/.." {
+            input = "/";
+            remove_last_segment(output, output_path_start);
+        } else if input == "." || input == ".." {
+            input = "";
+        } else {
+            input = if let Some(rest) = input.strip_prefix('/') {
+                output.push('/');
+                rest
+            } else {
+                input
+            };
+            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
+            output.push_str(&input[..slash_index]);
+            input = &input[slash_index..];
+        }
+    }
+}
+
+fn remove_last_segment(output: &mut String, output_path_start: usize) {
+    let last_slash_position = memrchr(b'/', &output.as_bytes()[output_path_start..]).unwrap_or(0);
+    output.truncate(output_path_start + last_slash_position);
 }
