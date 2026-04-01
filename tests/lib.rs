@@ -726,6 +726,54 @@ fn test_resolve_relative_iri_unchecked() {
 }
 
 #[test]
+fn test_resolve_relative_iri_relative_base() {
+    let examples = [
+        ("#foo", "#bar", "#foo"),
+        ("#foo", "?foo#bar", "?foo#foo"),
+        ("#foo", "/foo#bar", "/foo#foo"),
+        ("?foo", "?bar", "?foo"),
+        ("?foo", "/foo?bar", "/foo?foo"),
+        ("?foo", "/foo?bar", "/foo?foo"),
+        ("baz", "", "baz"),
+        ("baz", ".", "baz"),
+        ("baz", "/foo/bar", "/foo/baz"),
+        ("baz", "./foo/bar", "./foo/baz"),
+        ("baz", "../foo/bar", "../foo/baz"),
+        ("baz", "././foo/bar", "././foo/baz"),
+        ("baz", "../../foo/bar", "../../foo/baz"),
+    ];
+
+    for (relative, base, output) in examples {
+        let base = IriRef::parse(base).unwrap();
+        let output = IriRef::parse(output).unwrap();
+        match base.resolve(relative) {
+            Ok(result) => {
+                assert_eq!(
+                    result,
+                    output,
+                    "Resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
+                );
+                assert_eq!(result.scheme(), output.scheme());
+                assert_eq!(result.authority(), output.authority());
+                assert_eq!(result.path(), output.path());
+                assert_eq!(result.query(), output.query());
+                assert_eq!(result.fragment(), output.fragment());
+            }
+            Err(error) => panic!(
+                "Resolving of {} against {} failed with error: {}",
+                relative, base, error
+            ),
+        }
+        let result = base.resolve_unchecked(relative);
+        assert_eq!(
+            result.as_str(),
+            output,
+            "Lenient resolving of {relative} against {base} is wrong. Found {result} and expecting {output}"
+        );
+    }
+}
+
+#[test]
 fn test_relativize_iri() {
     let examples = [
         ("http:", "http:", ""),
