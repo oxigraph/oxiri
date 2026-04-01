@@ -576,6 +576,12 @@ fn test_resolve_relative_iri() {
             "http://foo",
             "http:./examplxm+ns/Seq/exhttpwsa//DtaAccnss/tencile#frag",
         ),
+        ("foo", "http://example.com/..", "http://example.com/foo"),
+        (
+            "foo",
+            "http://example.com/bar/..",
+            "http://example.com/bar/foo",
+        ),
     ];
 
     for (relative, base, output) in examples {
