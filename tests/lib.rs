@@ -37,7 +37,8 @@ fn test_parsing() {
         "http://[va.12z]",
         "http://[vff.B]",
         "http://[V0.a]",
-        "http://user:pass@example.com"
+        "http://user:pass@example.com",
+        "ht-+.tp://0aA-._~!$&'()*+,;=:%22é@0aA-._~!$&'()*+,;=%22é:12/0aA-._~!$&'()*+,;=%22é:@?0aA-._~!$&'()*+,;=%22é:@?#?0aA-._~!$&'()*+,;=%22é:@?"
     ];
 
     for e in examples {
@@ -268,6 +269,13 @@ fn test_wrong_relative_parsing() {
         "http://[v1.@]",
         "http://[v1.%01]",
         "//[v1.ւ]",
+        " :",
+        "// ",
+        "// @foo",
+        "//foo:a",
+        "/ ",
+        "? ",
+        "# ",
     ];
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();

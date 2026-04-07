@@ -1821,30 +1821,6 @@ fn is_iunreserved_or_sub_delims(c: char) -> bool {
     )
 }
 
-#[inline(always)]
-fn is_unreserved_or_sub_delims(c: char) -> bool {
-    matches!(c,
-        'a'..='z'
-        | 'A'..='Z'
-        | '0'..='9'
-        | '!'
-        | '$'
-        | '&'
-        | '\''
-        | '('
-        | ')'
-        | '*'
-        | '+'
-        | ','
-        | '-'
-        | '.'
-        | ';'
-        | '='
-        | '_'
-        | '~'
-    )
-}
-
 fn find_iri_positions(iri: &str) -> IriElementsPositions {
     let iri = iri.as_bytes();
     let scheme_end = memchr(b':', iri).map_or(0, |l| l + 1);
@@ -1940,6 +1916,16 @@ fn validate_iri_ref<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriPa
 }
 
 fn validate_scheme(scheme: &str) -> Result<(), IriParseError> {
+    const SCHEME_CHARACTER: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_alpha(&mut allowed);
+        set_digit(&mut allowed);
+        allowed[b'+' as usize] = true;
+        allowed[b'-' as usize] = true;
+        allowed[b'.' as usize] = true;
+        allowed
+    };
+
     let mut chars = scheme.bytes();
     let first = chars.next().ok_or(IriParseErrorKind::EmptyScheme)?;
     if !first.is_ascii_alphabetic() {
@@ -1949,7 +1935,7 @@ fn validate_scheme(scheme: &str) -> Result<(), IriParseError> {
         .into());
     }
     for c in &mut chars {
-        if !matches!(c, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'+' | b'-' | b'.') {
+        if !SCHEME_CHARACTER[usize::from(c)] {
             return Err(IriParseErrorKind::InvalidSchemeCharacter(
                 scheme[scheme.len() - chars.len() - 1..]
                     .chars()
@@ -1963,6 +1949,20 @@ fn validate_scheme(scheme: &str) -> Result<(), IriParseError> {
 }
 
 fn validate_authority(authority: &str) -> Result<(), IriParseError> {
+    const UNRESERVED_SUB_DELIMS_TWO_DOTS: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_unreserved(&mut allowed);
+        set_sub_delims(&mut allowed);
+        allowed[b':' as usize] = true;
+        allowed
+    };
+    const UNRESERVED_SUB_DELIMS: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_unreserved(&mut allowed);
+        set_sub_delims(&mut allowed);
+        allowed
+    };
+
     let Some(mut remaining_authority) = authority.strip_prefix("//") else {
         return Err(IriParseErrorKind::InvalidHostCharacter(
             authority.chars().next().unwrap_or_default(),
@@ -1972,7 +1972,9 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
     if let Some(username_index) = memchr(b'@', remaining_authority.as_bytes()) {
         let username = &remaining_authority[..username_index];
         remaining_authority = &remaining_authority[username_index + 1..];
-        validate_code_point_or_echar(username, |c| is_iunreserved_or_sub_delims(c) || c == ':')?;
+        validate_code_point_or_echar(username, UNRESERVED_SUB_DELIMS_TWO_DOTS, |c| {
+            c.is_ascii() && UNRESERVED_SUB_DELIMS_TWO_DOTS[c as usize] || is_ucschar(c)
+        })?;
     }
     if let Some(remaining_authority) = remaining_authority.strip_prefix('[') {
         // IP v6 or vfuture
@@ -1996,7 +1998,9 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
             remaining_authority = &remaining_authority[..port_index];
         }
         let host = remaining_authority;
-        validate_code_point_or_echar(host, is_iunreserved_or_sub_delims)?;
+        validate_code_point_or_echar(host, UNRESERVED_SUB_DELIMS, |c| {
+            c.is_ascii() && UNRESERVED_SUB_DELIMS[c as usize] || is_ucschar(c)
+        })?;
     }
     Ok(())
 }
@@ -2013,35 +2017,44 @@ fn validate_ip(ip: &str) -> Result<(), IriParseError> {
 
 // IPvFuture      = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
 fn validate_ip_v_future(ip: &str) -> Result<(), IriParseError> {
-    let mut chars = ip.chars();
-
-    let c = chars
-        .next()
-        .ok_or(IriParseErrorKind::InvalidHostCharacter(']'))?;
-    if !matches!(c, 'v' | 'V') {
-        return Err(IriParseErrorKind::InvalidHostCharacter(c).into());
+    const UNRESERVED_SUB_DELIMS_TWO_DOTS: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_unreserved(&mut allowed);
+        set_sub_delims(&mut allowed);
+        allowed[b':' as usize] = true;
+        allowed
     };
 
-    let mut with_a_version = false;
-    for c in &mut chars {
-        if c == '.' {
-            break;
-        } else if c.is_ascii_hexdigit() {
-            with_a_version = true;
-        } else {
-            return Err(IriParseErrorKind::InvalidHostCharacter(c).into());
-        }
+    let Some(mut ip) = ip.strip_prefix(['v', 'V']) else {
+        return Err(
+            IriParseErrorKind::InvalidHostCharacter(ip.chars().next().unwrap_or_default()).into(),
+        );
+    };
+    let version_size = ip.bytes().take_while(|c| c.is_ascii_hexdigit()).count();
+    if version_size == 0 {
+        return Err(
+            IriParseErrorKind::InvalidHostCharacter(ip.chars().next().unwrap_or_default()).into(),
+        );
     }
-    if !with_a_version {
-        return Err(IriParseErrorKind::InvalidHostCharacter(chars.next().unwrap_or(']')).into());
-    }
-
-    if chars.as_str().is_empty() {
+    ip = &ip[version_size..];
+    let Some(ip) = ip.strip_prefix('.') else {
+        return Err(
+            IriParseErrorKind::InvalidHostCharacter(ip.chars().next().unwrap_or_default()).into(),
+        );
+    };
+    if ip.is_empty() {
         return Err(IriParseErrorKind::InvalidHostCharacter(']').into());
     };
-    for c in chars {
-        if !is_unreserved_or_sub_delims(c) && c != ':' {
-            return Err(IriParseErrorKind::InvalidHostCharacter(c).into());
+    let mut chars = ip.bytes();
+    for c in &mut chars {
+        if !UNRESERVED_SUB_DELIMS_TWO_DOTS[usize::from(c)] {
+            return Err(IriParseErrorKind::InvalidHostCharacter(
+                ip[ip.len() - chars.len() - 1..]
+                    .chars()
+                    .next()
+                    .unwrap_or_default(),
+            )
+            .into());
         }
     }
 
@@ -2065,28 +2078,55 @@ fn validate_port(port: &str) -> Result<(), IriParseError> {
 }
 
 fn validate_path(path: &str) -> Result<(), IriParseError> {
-    validate_code_point_or_echar(path, |c| {
-        is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/')
+    const PCHAR_OR_SLASH: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_pchar(&mut allowed);
+        allowed[b'/' as usize] = true;
+        allowed
+    };
+
+    validate_code_point_or_echar(path, PCHAR_OR_SLASH, |c| {
+        c.is_ascii() && PCHAR_OR_SLASH[c as usize] || is_ucschar(c)
     })
 }
 
 fn validate_query(query: &str) -> Result<(), IriParseError> {
-    validate_code_point_or_echar(query, |c| {
-        is_iunreserved_or_sub_delims(c)
-            || matches!(c, ':' | '@' | '/' | '?' | '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
+    const PCHAR_OR_SLASH_OR_QUESTION_MARK: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_pchar(&mut allowed);
+        allowed[b'/' as usize] = true;
+        allowed[b'?' as usize] = true;
+        allowed
+    };
+
+    validate_code_point_or_echar(query, PCHAR_OR_SLASH_OR_QUESTION_MARK, |c| {
+        c.is_ascii() && PCHAR_OR_SLASH_OR_QUESTION_MARK[c as usize]
+            || is_ucschar(c)
+            || matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
     })
 }
 
 fn validate_fragment(fragment: &str) -> Result<(), IriParseError> {
-    validate_code_point_or_echar(fragment, |c| {
-        is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?')
+    const PCHAR_OR_SLASH_OR_QUESTION_MARK: [bool; 256] = {
+        let mut allowed = [false; 256];
+        set_pchar(&mut allowed);
+        allowed[b'/' as usize] = true;
+        allowed[b'?' as usize] = true;
+        allowed
+    };
+    validate_code_point_or_echar(fragment, PCHAR_OR_SLASH_OR_QUESTION_MARK, |c| {
+        c.is_ascii() && PCHAR_OR_SLASH_OR_QUESTION_MARK[c as usize] || is_ucschar(c)
     })
 }
 
 fn validate_code_point_or_echar(
     input: &str,
+    ascii_validator: [bool; 256],
     is_valid: impl Fn(char) -> bool,
 ) -> Result<(), IriParseError> {
+    if input.bytes().all(|c| ascii_validator[usize::from(c)]) {
+        return Ok(());
+    }
     let mut chars = input.chars();
     while let Some(c) = chars.next() {
         if c == '%' {
@@ -2102,4 +2142,77 @@ fn validate_code_point_or_echar(
         }
     }
     Ok(())
+}
+
+const fn set_alpha(allowed: &mut [bool; 256]) {
+    let mut i = b'a';
+    while i <= b'z' {
+        allowed[i as usize] = true;
+        i += 1;
+    }
+    let mut i = b'A';
+    while i <= b'Z' {
+        allowed[i as usize] = true;
+        i += 1;
+    }
+}
+
+const fn set_digit(allowed: &mut [bool; 256]) {
+    let mut i = b'0';
+    while i <= b'9' {
+        allowed[i as usize] = true;
+        i += 1;
+    }
+}
+
+const fn set_unreserved(allowed: &mut [bool; 256]) {
+    set_alpha(allowed);
+    set_digit(allowed);
+    allowed[b'-' as usize] = true;
+    allowed[b'.' as usize] = true;
+    allowed[b'_' as usize] = true;
+    allowed[b'~' as usize] = true;
+}
+
+const fn set_sub_delims(allowed: &mut [bool; 256]) {
+    allowed[b'!' as usize] = true;
+    allowed[b'$' as usize] = true;
+    allowed[b'&' as usize] = true;
+    allowed[b'\'' as usize] = true;
+    allowed[b'(' as usize] = true;
+    allowed[b')' as usize] = true;
+    allowed[b'*' as usize] = true;
+    allowed[b'+' as usize] = true;
+    allowed[b',' as usize] = true;
+    allowed[b';' as usize] = true;
+    allowed[b'=' as usize] = true;
+}
+
+const fn set_pchar(allowed: &mut [bool; 256]) {
+    set_unreserved(allowed);
+    set_sub_delims(allowed);
+    allowed[b':' as usize] = true;
+    allowed[b'@' as usize] = true;
+}
+
+fn is_ucschar(c: char) -> bool {
+    matches!(
+        c,
+        '\u{A0}'..='\u{D7FF}'
+        | '\u{F900}'..='\u{FDCF}'
+        | '\u{FDF0}'..='\u{FFEF}'
+        | '\u{10000}'..='\u{1FFFD}'
+        | '\u{20000}'..='\u{2FFFD}'
+        | '\u{30000}'..='\u{3FFFD}'
+        | '\u{40000}'..='\u{4FFFD}'
+        | '\u{50000}'..='\u{5FFFD}'
+        | '\u{60000}'..='\u{6FFFD}'
+        | '\u{70000}'..='\u{7FFFD}'
+        | '\u{80000}'..='\u{8FFFD}'
+        | '\u{90000}'..='\u{9FFFD}'
+        | '\u{A0000}'..='\u{AFFFD}'
+        | '\u{B0000}'..='\u{BFFFD}'
+        | '\u{C0000}'..='\u{CFFFD}'
+        | '\u{D0000}'..='\u{DFFFD}'
+        | '\u{E1000}'..='\u{EFFFD}')
 }
