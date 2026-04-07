@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr3};
+use memchr::{memchr, memchr2, memchr3, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -13,7 +13,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
-use std::str::{Chars, FromStr};
+use std::str::FromStr;
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI reference.
 ///
@@ -88,12 +88,12 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
-        let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions = IriParser::<_, false>::parse(iri, Some(self.as_ref()), &mut target_buffer)?;
-        Ok(IriRef {
-            iri: target_buffer,
-            positions,
-        })
+        let reference = IriRef::parse(iri)?;
+        let mut iri = String::new();
+        let positions = resolve(self, &reference, &mut iri);
+        let resolved = IriRef { iri, positions };
+        validate_resolved_path(&resolved)?;
+        Ok(resolved)
     }
 
     /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation.
@@ -106,13 +106,10 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_unchecked(&self, iri: &str) -> IriRef<String> {
-        let mut target_buffer = String::with_capacity(self.iri.len() + iri.len());
-        let positions =
-            IriParser::<_, true>::parse(iri, Some(self.as_ref()), &mut target_buffer).unwrap();
-        IriRef {
-            iri: target_buffer,
-            positions,
-        }
+        let reference = IriRef::parse_unchecked(iri);
+        let mut iri = String::new();
+        let positions = resolve(self, &reference, &mut iri);
+        IriRef { iri, positions }
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -132,7 +129,12 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
     pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        IriParser::<_, false>::parse(iri, Some(self.as_ref()), target_buffer)?;
+        let reference = IriRef::parse(iri)?;
+        let positions = resolve(self, &reference, target_buffer);
+        validate_resolved_path(&IriRef {
+            iri: target_buffer.as_str(),
+            positions,
+        })?;
         Ok(())
     }
 
@@ -147,7 +149,8 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into_unchecked(&self, iri: &str, target_buffer: &mut String) {
-        IriParser::<_, true>::parse(iri, Some(self.as_ref()), target_buffer).unwrap();
+        let reference = IriRef::parse_unchecked(iri);
+        resolve(self, &reference, target_buffer);
     }
 
     /// Returns an `IriRef` borrowing this IRI's text.
@@ -1251,576 +1254,6 @@ struct IriElementsPositions {
     query_end: usize,
 }
 
-trait OutputBuffer {
-    fn push(&mut self, c: char);
-
-    fn push_str(&mut self, s: &str);
-
-    fn clear(&mut self);
-
-    fn truncate(&mut self, new_len: usize);
-
-    fn len(&self) -> usize;
-
-    fn as_str(&self) -> &str;
-}
-
-impl OutputBuffer for String {
-    #[inline]
-    fn push(&mut self, c: char) {
-        self.push(c);
-    }
-
-    #[inline]
-    fn push_str(&mut self, s: &str) {
-        self.push_str(s);
-    }
-
-    #[inline]
-    fn clear(&mut self) {
-        self.clear();
-    }
-
-    #[inline]
-    fn truncate(&mut self, new_len: usize) {
-        self.truncate(new_len);
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    #[inline]
-    fn as_str(&self) -> &str {
-        self.as_str()
-    }
-}
-
-struct ParserInput<'a> {
-    value: Chars<'a>,
-    position: usize,
-}
-
-impl ParserInput<'_> {
-    #[inline]
-    fn next(&mut self) -> Option<char> {
-        if let Some(head) = self.value.next() {
-            self.position += head.len_utf8();
-            Some(head)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    fn front(&self) -> Option<char> {
-        self.value.clone().next()
-    }
-
-    #[inline]
-    fn starts_with(&self, c: char) -> bool {
-        self.value.as_str().starts_with(c)
-    }
-}
-
-/// parser implementing https://url.spec.whatwg.org/#concept-basic-url-parser without the normalization or backward compatibility bits to comply with RFC 3987
-///
-/// A sub function takes care of each state
-struct IriParser<'a, O: OutputBuffer, const UNCHECKED: bool> {
-    iri: &'a str,
-    base: Option<IriRef<&'a str>>,
-    input: ParserInput<'a>,
-    output: &'a mut O,
-    output_positions: IriElementsPositions,
-    input_scheme_end: usize,
-}
-
-impl<'a, O: OutputBuffer, const UNCHECKED: bool> IriParser<'a, O, UNCHECKED> {
-    fn parse(
-        iri: &'a str,
-        base: Option<IriRef<&'a str>>,
-        output: &'a mut O,
-    ) -> Result<IriElementsPositions, IriParseError> {
-        let mut parser = Self {
-            iri,
-            base,
-            input: ParserInput {
-                value: iri.chars(),
-                position: 0,
-            },
-            output,
-            output_positions: IriElementsPositions {
-                scheme_end: 0,
-                authority_end: 0,
-                path_end: 0,
-                query_end: 0,
-            },
-            input_scheme_end: 0,
-        };
-        parser.parse_scheme_start()?;
-        Ok(parser.output_positions)
-    }
-
-    fn parse_scheme_start(&mut self) -> Result<(), IriParseError> {
-        match self.input.front() {
-            Some(':') => {
-                if UNCHECKED {
-                    self.parse_scheme()
-                } else {
-                    self.parse_error(IriParseErrorKind::NoScheme)
-                }
-            }
-            Some(c) if c.is_ascii_alphabetic() => self.parse_scheme(),
-            _ => self.parse_relative(),
-        }
-    }
-
-    fn parse_scheme(&mut self) -> Result<(), IriParseError> {
-        loop {
-            let c = self.input.next();
-            match c {
-                Some(c) if c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.' => {
-                    self.output.push(c)
-                }
-                Some(':') => {
-                    self.output.push(':');
-                    self.output_positions.scheme_end = self.output.len();
-                    self.input_scheme_end = self.input.position;
-                    return if self.input.starts_with('/') {
-                        self.input.next();
-                        self.output.push('/');
-                        self.parse_path_or_authority()
-                    } else {
-                        self.output_positions.authority_end = self.output.len();
-                        self.parse_path::<false>()
-                    };
-                }
-                _ => {
-                    self.input = ParserInput {
-                        value: self.iri.chars(),
-                        position: 0,
-                    }; // reset
-                    self.output.clear();
-                    return self.parse_relative();
-                }
-            }
-        }
-    }
-
-    fn parse_path_or_authority(&mut self) -> Result<(), IriParseError> {
-        if self.input.starts_with('/') {
-            self.input.next();
-            self.output.push('/');
-            self.parse_authority()
-        } else {
-            self.output_positions.authority_end = self.output.len() - 1;
-            self.parse_path::<false>()
-        }
-    }
-
-    fn parse_relative(&mut self) -> Result<(), IriParseError> {
-        if let Some(base) = self.base {
-            match self.input.front() {
-                None => {
-                    self.output.push_str(&base.iri[..base.positions.query_end]);
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.output_positions.query_end = base.positions.query_end;
-                    Ok(())
-                }
-                Some('/') => {
-                    self.input.next();
-                    self.parse_relative_slash(&base)
-                }
-                Some('?') => {
-                    self.input.next();
-                    self.output.push_str(&base.iri[..base.positions.path_end]);
-                    self.output.push('?');
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.parse_query()
-                }
-                Some('#') => {
-                    self.input.next();
-                    self.output.push_str(&base.iri[..base.positions.query_end]);
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.output_positions.query_end = base.positions.query_end;
-                    self.output.push('#');
-                    self.parse_fragment()
-                }
-                _ => {
-                    self.output.push_str(&base.iri[..base.positions.path_end]);
-                    self.output_positions.scheme_end = base.positions.scheme_end;
-                    self.output_positions.authority_end = base.positions.authority_end;
-                    self.output_positions.path_end = base.positions.path_end;
-                    self.remove_last_segment();
-                    self.parse_relative_path::<true>()
-                }
-            }
-        } else {
-            self.output_positions.scheme_end = 0;
-            self.input_scheme_end = 0;
-            if self.input.starts_with('/') {
-                self.input.next();
-                self.output.push('/');
-                self.parse_path_or_authority()
-            } else {
-                self.output_positions.authority_end = 0;
-                self.parse_relative_path::<false>()
-            }
-        }
-    }
-
-    fn parse_relative_path<const REMOVE_DOT_SEGMENTS: bool>(
-        &mut self,
-    ) -> Result<(), IriParseError> {
-        while let Some(c) = self.input.front() {
-            if matches!(c, '/' | '?' | '#') {
-                break;
-            }
-            self.input.next();
-            self.read_url_codepoint_or_echar(c, |c| is_iunreserved_or_sub_delims(c) || c == '@')?;
-        }
-        self.parse_path::<REMOVE_DOT_SEGMENTS>()
-    }
-
-    fn parse_relative_slash(&mut self, base: &IriRef<&'a str>) -> Result<(), IriParseError> {
-        if self.input.starts_with('/') {
-            self.input.next();
-            self.output.push_str(&base.iri[..base.positions.scheme_end]);
-            self.output_positions.scheme_end = base.positions.scheme_end;
-            self.output.push('/');
-            self.output.push('/');
-            self.parse_authority()
-        } else {
-            self.output
-                .push_str(&base.iri[..base.positions.authority_end]);
-            self.output.push('/');
-            self.output_positions.scheme_end = base.positions.scheme_end;
-            self.output_positions.authority_end = base.positions.authority_end;
-            self.parse_path::<true>()
-        }
-    }
-
-    fn parse_authority(&mut self) -> Result<(), IriParseError> {
-        // @ are not allowed in IRI authorities so not need to take care of ambiguities
-        loop {
-            let c = self.input.next();
-            match c {
-                Some('@') => {
-                    self.output.push('@');
-                    return self.parse_host();
-                }
-                None | Some('[') | Some('/') | Some('?') | Some('#') => {
-                    self.input = ParserInput {
-                        value: self.iri[self.input_scheme_end + 2..].chars(),
-                        position: self.input_scheme_end + 2,
-                    };
-                    self.output.truncate(self.output_positions.scheme_end + 2);
-                    return self.parse_host();
-                }
-                Some(c) => {
-                    self.read_url_codepoint_or_echar(c, |c| {
-                        is_iunreserved_or_sub_delims(c) || c == ':'
-                    })?;
-                }
-            }
-        }
-    }
-
-    fn parse_host(&mut self) -> Result<(), IriParseError> {
-        if self.input.starts_with('[') {
-            // IP v6
-            let start_position = self.input.position;
-            while let Some(c) = self.input.next() {
-                self.output.push(c);
-                if c == ']' {
-                    let ip = &self.iri[start_position + 1..self.input.position - 1];
-                    if !UNCHECKED {
-                        if ip.starts_with('v') || ip.starts_with('V') {
-                            validate_ip_v_future(ip)?;
-                        } else if let Err(error) = Ipv6Addr::from_str(ip) {
-                            return self.parse_error(IriParseErrorKind::InvalidHostIp(error));
-                        }
-                    }
-
-                    let c = self.input.next();
-                    return match c {
-                        Some(':') => {
-                            self.output.push(':');
-                            self.parse_port()
-                        }
-                        None | Some('/') | Some('?') | Some('#') => {
-                            self.output_positions.authority_end = self.output.len();
-                            self.parse_path_start(c)
-                        }
-                        Some(c) => {
-                            if UNCHECKED {
-                                self.output.push(c);
-                                continue;
-                            } else {
-                                self.parse_error(IriParseErrorKind::InvalidHostCharacter(c))
-                            }
-                        }
-                    };
-                }
-            }
-            if UNCHECKED {
-                // We consider it's valid even if it's not finished
-                self.output_positions.authority_end = self.output.len();
-                self.parse_path_start(None)
-            } else {
-                self.parse_error(IriParseErrorKind::InvalidHostCharacter('['))
-            }
-        } else {
-            // Other host
-            loop {
-                let c = self.input.next();
-                match c {
-                    Some(':') => {
-                        self.output.push(':');
-                        return self.parse_port();
-                    }
-                    None | Some('/') | Some('?') | Some('#') => {
-                        self.output_positions.authority_end = self.output.len();
-                        return self.parse_path_start(c);
-                    }
-                    Some(c) => self.read_url_codepoint_or_echar(c, is_iunreserved_or_sub_delims)?,
-                }
-            }
-        }
-    }
-
-    fn parse_port(&mut self) -> Result<(), IriParseError> {
-        loop {
-            let c = self.input.next();
-            match c {
-                Some('/') | Some('?') | Some('#') | None => {
-                    self.output_positions.authority_end = self.output.len();
-                    return self.parse_path_start(c);
-                }
-                Some(c) => {
-                    if UNCHECKED || c.is_ascii_digit() {
-                        self.output.push(c)
-                    } else {
-                        return self.parse_error(IriParseErrorKind::InvalidPortCharacter(c));
-                    }
-                }
-            }
-        }
-    }
-
-    fn parse_path_start(&mut self, c: Option<char>) -> Result<(), IriParseError> {
-        match c {
-            None => {
-                self.output_positions.path_end = self.output.len();
-                self.output_positions.query_end = self.output.len();
-                Ok(())
-            }
-            Some('?') => {
-                self.output_positions.path_end = self.output.len();
-                self.output.push('?');
-                self.parse_query()
-            }
-            Some('#') => {
-                self.output_positions.path_end = self.output.len();
-                self.output_positions.query_end = self.output.len();
-                self.output.push('#');
-                self.parse_fragment()
-            }
-            Some('/') => {
-                self.output.push('/');
-                self.parse_path::<false>()
-            }
-            Some(c) => {
-                self.read_url_codepoint_or_echar(c, |c| {
-                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
-                })?;
-                self.parse_path::<false>()
-            }
-        }
-    }
-
-    fn parse_path<const REMOVE_DOT_SEGMENTS: bool>(&mut self) -> Result<(), IriParseError> {
-        loop {
-            let c = self.input.next();
-            match c {
-                None | Some('/') | Some('?') | Some('#') => {
-                    let output_str = self.output.as_str();
-                    if REMOVE_DOT_SEGMENTS {
-                        let output_path = &output_str[self.output_positions.authority_end..];
-                        if output_path.ends_with("/..") {
-                            self.output.truncate(self.output.len() - 3);
-                            self.remove_last_segment();
-                        } else if output_path.ends_with("/.") || output_path == "." {
-                            self.output.truncate(self.output.len() - 1);
-                        } else if output_path == ".." {
-                            self.output.truncate(self.output.len() - 2);
-                        } else if c == Some('/') {
-                            self.output.push('/');
-                            continue;
-                        }
-                    } else if c == Some('/') {
-                        self.output.push('/');
-                        continue;
-                    }
-
-                    // We validate that the path does not start with "//" and is ambiguous with an authority
-                    // It can happen after resolving ./ and ../
-                    let output_str = self.output.as_str();
-                    if REMOVE_DOT_SEGMENTS
-                        && !UNCHECKED
-                        && output_str[self.output_positions.authority_end..].starts_with("//")
-                        && self.output_positions.authority_end == self.output_positions.scheme_end
-                    {
-                        return self.parse_error(IriParseErrorKind::PathStartingWithTwoSlashes);
-                    }
-
-                    if c == Some('?') {
-                        self.output_positions.path_end = self.output.len();
-                        self.output.push('?');
-                        return self.parse_query();
-                    } else if c == Some('#') {
-                        self.output_positions.path_end = self.output.len();
-                        self.output_positions.query_end = self.output.len();
-                        self.output.push('#');
-                        return self.parse_fragment();
-                    } else if c.is_none() {
-                        self.output_positions.path_end = self.output.len();
-                        self.output_positions.query_end = self.output.len();
-                        return Ok(());
-                    }
-                }
-                Some(c) => self.read_url_codepoint_or_echar(c, |c| {
-                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@')
-                })?,
-            }
-        }
-    }
-
-    fn parse_query(&mut self) -> Result<(), IriParseError> {
-        while let Some(c) = self.input.next() {
-            if c == '#' {
-                self.output_positions.query_end = self.output.len();
-                self.output.push('#');
-                return self.parse_fragment();
-            } else {
-                self.read_url_codepoint_or_echar(c, |c| {
-                    is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?' | '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
-                })?
-            }
-        }
-        self.output_positions.query_end = self.output.len();
-        Ok(())
-    }
-
-    fn parse_fragment(&mut self) -> Result<(), IriParseError> {
-        while let Some(c) = self.input.next() {
-            self.read_url_codepoint_or_echar(c, |c| {
-                is_iunreserved_or_sub_delims(c) || matches!(c, ':' | '@' | '/' | '?')
-            })?;
-        }
-        Ok(())
-    }
-
-    fn remove_last_segment(&mut self) {
-        if let Some(last_slash_position) =
-            self.output.as_str()[self.output_positions.authority_end..].rfind('/')
-        {
-            self.output
-                .truncate(last_slash_position + self.output_positions.authority_end);
-            self.output.push('/');
-        } else {
-            self.output.truncate(self.output_positions.authority_end);
-            if self.output_positions.authority_end > self.output_positions.scheme_end {
-                self.output.push('/');
-            }
-        }
-    }
-
-    fn read_url_codepoint_or_echar(
-        &mut self,
-        c: char,
-        valid: impl Fn(char) -> bool,
-    ) -> Result<(), IriParseError> {
-        if UNCHECKED || valid(c) {
-            self.output.push(c);
-            Ok(())
-        } else if c == '%' {
-            self.read_echar()
-        } else {
-            self.parse_error(IriParseErrorKind::InvalidIriCodePoint(c))
-        }
-    }
-
-    fn read_echar(&mut self) -> Result<(), IriParseError> {
-        let c1 = self.input.next();
-        let c2 = self.input.next();
-        if c1.is_some_and(|c| c.is_ascii_hexdigit()) && c2.is_some_and(|c| c.is_ascii_hexdigit()) {
-            self.output.push('%');
-            self.output.push(c1.unwrap());
-            self.output.push(c2.unwrap());
-            Ok(())
-        } else {
-            self.parse_error(IriParseErrorKind::InvalidPercentEncoding([
-                Some('%'),
-                c1,
-                c2,
-            ]))
-        }
-    }
-
-    fn parse_error<T>(&self, kind: IriParseErrorKind) -> Result<T, IriParseError> {
-        Err(kind.into())
-    }
-}
-
-#[inline(always)]
-fn is_iunreserved_or_sub_delims(c: char) -> bool {
-    matches!(c,
-        'a'..='z'
-        | 'A'..='Z'
-        | '0'..='9'
-        | '!'
-        | '$'
-        | '&'
-        | '\''
-        | '('
-        | ')'
-        | '*'
-        | '+'
-        | ','
-        | '-'
-        | '.'
-        | ';'
-        | '='
-        | '_'
-        | '~'
-        | '\u{A0}'..='\u{D7FF}'
-        | '\u{F900}'..='\u{FDCF}'
-        | '\u{FDF0}'..='\u{FFEF}'
-        | '\u{10000}'..='\u{1FFFD}'
-        | '\u{20000}'..='\u{2FFFD}'
-        | '\u{30000}'..='\u{3FFFD}'
-        | '\u{40000}'..='\u{4FFFD}'
-        | '\u{50000}'..='\u{5FFFD}'
-        | '\u{60000}'..='\u{6FFFD}'
-        | '\u{70000}'..='\u{7FFFD}'
-        | '\u{80000}'..='\u{8FFFD}'
-        | '\u{90000}'..='\u{9FFFD}'
-        | '\u{A0000}'..='\u{AFFFD}'
-        | '\u{B0000}'..='\u{BFFFD}'
-        | '\u{C0000}'..='\u{CFFFD}'
-        | '\u{D0000}'..='\u{DFFFD}'
-        | '\u{E1000}'..='\u{EFFFD}'
-    )
-}
-
 fn find_iri_positions(iri: &str) -> IriElementsPositions {
     let iri = iri.as_bytes();
     let scheme_end = memchr(b':', iri).map_or(0, |l| l + 1);
@@ -2215,4 +1648,189 @@ fn is_ucschar(c: char) -> bool {
         | '\u{C0000}'..='\u{CFFFD}'
         | '\u{D0000}'..='\u{DFFFD}'
         | '\u{E1000}'..='\u{EFFFD}')
+}
+
+fn validate_resolved_path<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriParseError> {
+    if iri.positions.scheme_end == iri.positions.authority_end
+        && iri.iri[iri.positions.authority_end..].starts_with("//")
+    {
+        return Err(IriParseErrorKind::PathStartingWithTwoSlashes.into());
+    }
+    Ok(())
+}
+
+/// Implement relative resolution transform: https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.2
+fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
+    base: &IriRef<T1>,
+    relative: &IriRef<T2>,
+    output_buffer: &mut String,
+) -> IriElementsPositions {
+    // TODO: apply write_path_without_dot_segments_to everywhere?
+    if relative.is_absolute() {
+        output_buffer.reserve_exact(relative.as_str().len());
+        output_buffer.push_str(relative.as_str());
+        relative.positions
+    } else if relative.positions.authority_end > 0 {
+        output_buffer.reserve_exact(base.positions.scheme_end + relative.iri.len());
+        output_buffer.push_str(&base.iri[..base.positions.scheme_end]);
+        output_buffer.push_str(&relative.iri);
+        IriElementsPositions {
+            scheme_end: base.positions.scheme_end,
+            authority_end: base.positions.scheme_end + relative.positions.authority_end,
+            path_end: base.positions.scheme_end + relative.positions.path_end,
+            query_end: base.positions.scheme_end + relative.positions.query_end,
+        }
+    } else if relative.positions.path_end > 0 {
+        let path_end = if relative.iri.starts_with('/') {
+            output_buffer.reserve_exact(base.positions.authority_end + relative.iri.len());
+            output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+            write_path_without_dot_segments_to(
+                &relative.iri[..relative.positions.path_end],
+                output_buffer,
+                base.positions.authority_end,
+                false,
+            );
+            let path_end = output_buffer.len();
+            output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+            path_end
+        } else {
+            if base.positions.authority_end > base.positions.scheme_end
+                && base.positions.authority_end == base.positions.path_end
+            {
+                output_buffer.reserve_exact(
+                    base.positions.authority_end
+                        + 1
+                        + (relative.iri.len() - relative.positions.authority_end),
+                );
+                output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+                write_path_without_dot_segments_to(
+                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                    output_buffer,
+                    base.positions.authority_end,
+                    true,
+                );
+                let path_end = output_buffer.len();
+                output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+                path_end
+            } else if let Some(last_slash_position) = memrchr(
+                b'/',
+                base.iri[base.positions.authority_end..base.positions.path_end].as_bytes(),
+            ) {
+                output_buffer.reserve_exact(
+                    base.positions.authority_end
+                        + last_slash_position
+                        + (relative.iri.len() - relative.positions.authority_end)
+                        + 1,
+                );
+                output_buffer
+                    .push_str(&base.iri[..base.positions.authority_end + last_slash_position]);
+                write_path_without_dot_segments_to(
+                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                    output_buffer,
+                    base.positions.authority_end,
+                    true,
+                );
+                let path_end = output_buffer.len();
+                output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+                path_end
+            } else {
+                output_buffer.reserve_exact(
+                    base.positions.authority_end
+                        + (relative.iri.len() - relative.positions.authority_end),
+                );
+                output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+                write_path_without_dot_segments_to(
+                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                    output_buffer,
+                    base.positions.authority_end,
+                    false,
+                );
+                let path_end = output_buffer.len();
+                output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+                path_end
+            }
+        };
+        IriElementsPositions {
+            scheme_end: base.positions.scheme_end,
+            authority_end: base.positions.authority_end,
+            path_end,
+            query_end: path_end + (relative.positions.query_end - relative.positions.path_end),
+        }
+    } else if relative.positions.query_end > 0 {
+        output_buffer.reserve_exact(base.positions.path_end + relative.iri.len());
+        output_buffer.push_str(&base.iri[..base.positions.path_end]);
+        output_buffer.push_str(&relative.iri);
+        IriElementsPositions {
+            scheme_end: base.positions.scheme_end,
+            authority_end: base.positions.authority_end,
+            path_end: base.positions.path_end,
+            query_end: base.positions.path_end + relative.positions.query_end,
+        }
+    } else {
+        output_buffer.reserve_exact(base.positions.query_end + relative.iri.len());
+        output_buffer.push_str(&base.iri[..base.positions.query_end]);
+        output_buffer.push_str(&relative.iri);
+        base.positions
+    }
+}
+
+/// Implement https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.4
+fn write_path_without_dot_segments_to(
+    mut input: &str,
+    output: &mut String,
+    output_path_start: usize,
+    with_prefix_slash: bool,
+) {
+    if with_prefix_slash {
+        if input.starts_with("./") {
+            input = &input[1..];
+        } else if input == "." {
+            input = "/";
+        } else if input.starts_with("../") {
+            input = &input[2..];
+            remove_last_segment(output, output_path_start);
+        } else if input == ".." {
+            input = "/";
+            remove_last_segment(output, output_path_start);
+        } else {
+            output.push('/');
+            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
+            output.push_str(&input[..slash_index]);
+            input = &input[slash_index..];
+        }
+    }
+    while !input.is_empty() {
+        if let Some(rest) = input.strip_prefix("../") {
+            input = rest;
+        } else if let Some(rest) = input.strip_prefix("./") {
+            input = rest;
+        } else if input.starts_with("/./") {
+            input = &input[2..];
+        } else if input == "/." {
+            input = "/";
+        } else if input.starts_with("/../") {
+            input = &input[3..];
+            remove_last_segment(output, output_path_start);
+        } else if input == "/.." {
+            input = "/";
+            remove_last_segment(output, output_path_start);
+        } else if input == "." || input == ".." {
+            input = "";
+        } else {
+            input = if let Some(rest) = input.strip_prefix('/') {
+                output.push('/');
+                rest
+            } else {
+                input
+            };
+            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
+            output.push_str(&input[..slash_index]);
+            input = &input[slash_index..];
+        }
+    }
+}
+
+fn remove_last_segment(output: &mut String, output_path_start: usize) {
+    let last_slash_position = memrchr(b'/', &output.as_bytes()[output_path_start..]).unwrap_or(0);
+    output.truncate(output_path_start + last_slash_position);
 }

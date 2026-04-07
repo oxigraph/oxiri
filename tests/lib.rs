@@ -682,7 +682,7 @@ fn test_resolve_relative_iri_unchecked() {
         ("urn:x-hp:eg/", "file:doc/inference/data/owlDemoSchema.xml", "urn:x-hp:eg/"),
         ("", "file:testing/abbreviated/relative-uris.rdf", "file:testing/abbreviated/relative-uris.rdf"),
         (".", "file:testing/abbreviated/relative-uris.rdf", "file:testing/abbreviated/"),
-        ("../../C/D", "file:testing/abbreviated/relative-uris.rdf", "file:C/D"),
+        ("../../C/D", "file:testing/abbreviated/relative-uris.rdf", "file:/C/D"),
         ("//example.com/A", "file:testing/abbreviated/relative-uris.rdf", "file://example.com/A"),
         ("/A/B#foo/", "file:testing/abbreviated/relative-uris.rdf", "file:/A/B#foo/"),
         ("X#bar", "file:testing/abbreviated/relative-uris.rdf", "file:testing/abbreviated/X#bar"),
