@@ -2,7 +2,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr3};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -1823,16 +1822,22 @@ fn is_iunreserved_or_sub_delims(c: char) -> bool {
 
 fn find_iri_positions(iri: &str) -> IriElementsPositions {
     let iri = iri.as_bytes();
-    let scheme_end = memchr(b':', iri).map_or(0, |l| l + 1);
+    let scheme_end = iri.iter().position(|c| *c == b':').map_or(0, |l| l + 1);
     find_iri_positions_knowing_scheme_end(iri, scheme_end)
 }
 
 fn find_iri_positions_knowing_scheme_end(iri: &[u8], scheme_end: usize) -> IriElementsPositions {
-    let path_end = memchr2(b'?', b'#', &iri[scheme_end..]).map_or(iri.len(), |l| scheme_end + l);
-    let query_end = memchr(b'#', &iri[path_end..]).map_or(iri.len(), |l| path_end + l);
+    let path_end = iri[scheme_end..].iter().position(|c| matches!(*c, b'?' | b'#')).map_or(iri.len(), |l| scheme_end + l);
+    let query_end = iri[path_end..]
+        .iter()
+        .position(|c| *c == b'#')
+        .map_or(iri.len(), |l| path_end + l);
     let authority_end =
         if scheme_end + 2 <= path_end && iri[scheme_end] == b'/' && iri[scheme_end + 1] == b'/' {
-            memchr(b'/', &iri[scheme_end + 2..path_end]).map_or(path_end, |l| scheme_end + 2 + l)
+            iri[scheme_end + 2..path_end]
+                .iter()
+                .position(|c| *c == b'/')
+                .map_or(path_end, |l| scheme_end + 2 + l)
         } else {
             scheme_end
         };
@@ -1853,7 +1858,7 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
         }
         Some(b'?') => {
             // query + fragment only
-            let query_end = memchr(b'#', iri).unwrap_or(iri.len());
+            let query_end = iri.iter().position(|c| *c == b'#').unwrap_or(iri.len());
             IriElementsPositions {
                 scheme_end: 0,
                 authority_end: 0,
@@ -1873,18 +1878,10 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
         _ => {
             // let's guess if we start with a scheme or a path
             // for that we need to find the first character that is ':', '?', '/' or '#' and see if it's ':'
-            // code is a bit painful because there is no memchr4
-            let scheme_end = memchr3(b':', b'?', b'/', iri).map_or(0, |index| {
-                if iri[index] == b':' {
-                    if memchr(b'#', &iri[..index]).is_some() {
-                        0 // actually not a scheme but path + fragment
-                    } else {
-                        index + 1
-                    }
-                } else {
-                    0
-                }
-            });
+            let scheme_end = iri
+                .iter()
+                .position(|c| matches!(*c, b':' | b'?' | b'/' | b'#'))
+                .map_or(0, |index| if iri[index] == b':' { index + 1 } else { 0 });
             find_iri_positions_knowing_scheme_end(iri, scheme_end)
         }
     }
@@ -1969,20 +1966,19 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
         )
         .into());
     };
-    if let Some(username_index) = memchr(b'@', remaining_authority.as_bytes()) {
-        let username = &remaining_authority[..username_index];
-        remaining_authority = &remaining_authority[username_index + 1..];
+    if let Some((username, r)) = remaining_authority.split_once('@') {
+        remaining_authority = r;
         validate_code_point_or_echar(username, UNRESERVED_SUB_DELIMS_TWO_DOTS, |c| {
             c.is_ascii() && UNRESERVED_SUB_DELIMS_TWO_DOTS[c as usize] || is_ucschar(c)
         })?;
     }
     if let Some(remaining_authority) = remaining_authority.strip_prefix('[') {
         // IP v6 or vfuture
-        let Some(end_of_ip_index) = memchr(b']', remaining_authority.as_bytes()) else {
+        let Some((ip, r)) = remaining_authority.split_once(']') else {
             return Err(IriParseErrorKind::UnmatchedHostBracket.into());
         };
-        validate_ip(&remaining_authority[..end_of_ip_index])?;
-        let remaining_authority = &remaining_authority[end_of_ip_index + 1..];
+        validate_ip(ip)?;
+        let remaining_authority = r;
         if !remaining_authority.is_empty() {
             let Some(port) = remaining_authority.strip_prefix(':') else {
                 return Err(IriParseErrorKind::InvalidHostCharacter(
@@ -1993,9 +1989,9 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
             validate_port(port)?;
         }
     } else {
-        if let Some(port_index) = memchr(b':', remaining_authority.as_bytes()) {
-            validate_port(&remaining_authority[port_index + 1..])?;
-            remaining_authority = &remaining_authority[..port_index];
+        if let Some((r, port)) = remaining_authority.split_once(':') {
+            validate_port(port)?;
+            remaining_authority = r;
         }
         let host = remaining_authority;
         validate_code_point_or_echar(host, UNRESERVED_SUB_DELIMS, |c| {
