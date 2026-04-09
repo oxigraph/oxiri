@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr3, memrchr};
+use memchr::{memchr, memchr2, memchr3, memchr_iter, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -11,6 +11,7 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::iter::once;
 use std::net::{AddrParseError, Ipv6Addr};
 use std::ops::Deref;
 use std::str::FromStr;
@@ -1723,17 +1724,12 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                     base.positions.authority_end,
                     false,
                 );
-                let with_prefix_slash = if output_buffer.ends_with('/') {
-                    output_buffer.pop();
-                    true
-                } else {
-                    false
-                };
+                output_buffer.pop(); // We remove the last slash to take it into account when removing dot segments of the next one
                 write_path_without_dot_segments_to(
                     &relative.iri[relative.positions.authority_end..relative.positions.path_end],
                     output_buffer,
                     base.positions.authority_end,
-                    with_prefix_slash,
+                    true,
                 );
             } else {
                 // We just concatenate the two relative paths, we don't attempt to remove dot segments because it can end up badly
@@ -1784,57 +1780,33 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
 
 /// Implement https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.4
 fn write_path_without_dot_segments_to(
-    mut input: &str,
+    input: &str,
     output: &mut String,
     output_path_start: usize,
-    with_prefix_slash: bool,
+    mut with_prefix_slash: bool,
 ) {
-    if with_prefix_slash {
-        if input.starts_with("./") {
-            input = &input[1..];
-        } else if input == "." {
-            input = "/";
-        } else if input.starts_with("../") {
-            input = &input[2..];
-            remove_last_segment(output, output_path_start);
-        } else if input == ".." {
-            input = "/";
-            remove_last_segment(output, output_path_start);
-        } else {
-            output.push('/');
-            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
-            output.push_str(&input[..slash_index]);
-            input = &input[slash_index..];
+    let mut previous_offset = 0;
+    let mut next_offsets = memchr_iter(b'/', input.as_bytes())
+        .chain(once(input.len()))
+        .peekable();
+    while let Some(next_offset) = next_offsets.next() {
+        match &input[previous_offset..next_offset] {
+            "." => (),
+            ".." => {
+                remove_last_segment(output, output_path_start);
+            }
+            segment => {
+                if with_prefix_slash {
+                    output.push('/');
+                }
+                output.push_str(segment);
+                with_prefix_slash = next_offsets.peek().is_some();
+            }
         }
+        previous_offset = next_offset + 1;
     }
-    while !input.is_empty() {
-        if let Some(rest) = input.strip_prefix("../") {
-            input = rest;
-        } else if let Some(rest) = input.strip_prefix("./") {
-            input = rest;
-        } else if input.starts_with("/./") {
-            input = &input[2..];
-        } else if input == "/." {
-            input = "/";
-        } else if input.starts_with("/../") {
-            input = &input[3..];
-            remove_last_segment(output, output_path_start);
-        } else if input == "/.." {
-            input = "/";
-            remove_last_segment(output, output_path_start);
-        } else if input == "." || input == ".." {
-            input = "";
-        } else {
-            input = if let Some(rest) = input.strip_prefix('/') {
-                output.push('/');
-                rest
-            } else {
-                input
-            };
-            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
-            output.push_str(&input[..slash_index]);
-            input = &input[slash_index..];
-        }
+    if with_prefix_slash {
+        output.push('/');
     }
 }
 
