@@ -1681,7 +1681,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             query_end: base.positions.scheme_end + relative.positions.query_end,
         }
     } else if relative.positions.path_end > 0 {
-        let path_end = if relative.iri.starts_with('/') {
+        if relative.iri.starts_with('/') {
             output_buffer.reserve_exact(base.positions.authority_end + relative.iri.len());
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
             write_path_without_dot_segments_to(
@@ -1690,66 +1690,74 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                 base.positions.authority_end,
                 false,
             );
-            let path_end = output_buffer.len();
-            output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
-            path_end
-        } else {
-            if base.positions.authority_end > base.positions.scheme_end
-                && base.positions.authority_end == base.positions.path_end
-            {
-                output_buffer.reserve_exact(
-                    base.positions.authority_end
-                        + 1
-                        + (relative.iri.len() - relative.positions.authority_end),
-                );
-                output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+        } else if base.positions.authority_end > base.positions.scheme_end
+            && base.positions.authority_end == base.positions.path_end
+        {
+            output_buffer.reserve_exact(
+                base.positions.authority_end
+                    + 1
+                    + (relative.iri.len() - relative.positions.authority_end),
+            );
+            output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+            write_path_without_dot_segments_to(
+                &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                output_buffer,
+                base.positions.authority_end,
+                true,
+            );
+        } else if let Some(last_slash_position) = memrchr(
+            b'/',
+            base.iri[base.positions.authority_end..base.positions.path_end].as_bytes(),
+        ) {
+            output_buffer.reserve_exact(
+                base.positions.authority_end
+                    + last_slash_position
+                    + (relative.iri.len() - relative.positions.authority_end)
+                    + 1,
+            );
+            output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+            if base.positions.authority_end > 0 {
                 write_path_without_dot_segments_to(
-                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
-                    output_buffer,
-                    base.positions.authority_end,
-                    true,
-                );
-                let path_end = output_buffer.len();
-                output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
-                path_end
-            } else if let Some(last_slash_position) = memrchr(
-                b'/',
-                base.iri[base.positions.authority_end..base.positions.path_end].as_bytes(),
-            ) {
-                output_buffer.reserve_exact(
-                    base.positions.authority_end
-                        + last_slash_position
-                        + (relative.iri.len() - relative.positions.authority_end)
-                        + 1,
-                );
-                output_buffer
-                    .push_str(&base.iri[..base.positions.authority_end + last_slash_position]);
-                write_path_without_dot_segments_to(
-                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
-                    output_buffer,
-                    base.positions.authority_end,
-                    true,
-                );
-                let path_end = output_buffer.len();
-                output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
-                path_end
-            } else {
-                output_buffer.reserve_exact(
-                    base.positions.authority_end
-                        + (relative.iri.len() - relative.positions.authority_end),
-                );
-                output_buffer.push_str(&base.iri[..base.positions.authority_end]);
-                write_path_without_dot_segments_to(
-                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                    &base.iri[base.positions.authority_end..][..last_slash_position + 1],
                     output_buffer,
                     base.positions.authority_end,
                     false,
                 );
-                let path_end = output_buffer.len();
-                output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
-                path_end
+                let with_prefix_slash = if output_buffer.ends_with('/') {
+                    output_buffer.pop();
+                    true
+                } else {
+                    false
+                };
+                write_path_without_dot_segments_to(
+                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                    output_buffer,
+                    base.positions.authority_end,
+                    with_prefix_slash,
+                );
+            } else {
+                // We just concatenate the two relative paths, we don't attempt to remove dot segments because it can end up badly
+                output_buffer
+                    .push_str(&base.iri[base.positions.authority_end..][..last_slash_position + 1]);
+                output_buffer.push_str(
+                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                );
             }
-        };
+        } else {
+            output_buffer.reserve_exact(
+                base.positions.authority_end
+                    + (relative.iri.len() - relative.positions.authority_end),
+            );
+            output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+            write_path_without_dot_segments_to(
+                &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                output_buffer,
+                base.positions.authority_end,
+                false,
+            );
+        }
+        let path_end = output_buffer.len();
+        output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
             authority_end: base.positions.authority_end,
