@@ -1687,20 +1687,40 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     relative: &IriRef<T2>,
     output_buffer: &mut String,
 ) -> IriElementsPositions {
-    // TODO: apply write_path_without_dot_segments_to everywhere?
     if relative.is_absolute() {
-        output_buffer.reserve_exact(relative.as_str().len());
-        output_buffer.push_str(relative.as_str());
-        relative.positions
+        output_buffer.reserve_exact(relative.iri.len());
+        output_buffer.push_str(&relative.iri[..relative.positions.authority_end]);
+        write_path_without_dot_segments_to(
+            &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+            output_buffer,
+            relative.positions.authority_end,
+            false,
+        );
+        let path_end = output_buffer.len();
+        output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
+        IriElementsPositions {
+            scheme_end: relative.positions.scheme_end,
+            authority_end: relative.positions.authority_end,
+            path_end,
+            query_end: path_end + (relative.positions.query_end - relative.positions.path_end),
+        }
     } else if relative.positions.authority_end > 0 {
         output_buffer.reserve_exact(base.positions.scheme_end + relative.iri.len());
         output_buffer.push_str(&base.iri[..base.positions.scheme_end]);
-        output_buffer.push_str(&relative.iri);
+        output_buffer.push_str(&relative.iri[..relative.positions.authority_end]);
+        write_path_without_dot_segments_to(
+            &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+            output_buffer,
+            base.positions.scheme_end + relative.positions.authority_end,
+            false,
+        );
+        let path_end = output_buffer.len();
+        output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
             authority_end: base.positions.scheme_end + relative.positions.authority_end,
-            path_end: base.positions.scheme_end + relative.positions.path_end,
-            query_end: base.positions.scheme_end + relative.positions.query_end,
+            path_end,
+            query_end: path_end + (relative.positions.query_end - relative.positions.path_end),
         }
     } else if relative.positions.path_end > 0 {
         if relative.iri.starts_with('/') {
@@ -1788,19 +1808,39 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
         }
     } else if relative.positions.query_end > 0 {
         output_buffer.reserve_exact(base.positions.path_end + relative.iri.len());
-        output_buffer.push_str(&base.iri[..base.positions.path_end]);
+        output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+        write_path_without_dot_segments_to(
+            &base.iri[base.positions.authority_end..base.positions.path_end],
+            output_buffer,
+            base.positions.authority_end,
+            false,
+        );
+        let path_end = output_buffer.len();
         output_buffer.push_str(&relative.iri);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
             authority_end: base.positions.authority_end,
-            path_end: base.positions.path_end,
-            query_end: base.positions.path_end + relative.positions.query_end,
+            path_end,
+            query_end: path_end + relative.positions.query_end,
         }
     } else {
         output_buffer.reserve_exact(base.positions.query_end + relative.iri.len());
-        output_buffer.push_str(&base.iri[..base.positions.query_end]);
+        output_buffer.push_str(&base.iri[..base.positions.authority_end]);
+        write_path_without_dot_segments_to(
+            &base.iri[base.positions.authority_end..base.positions.path_end],
+            output_buffer,
+            base.positions.authority_end,
+            false,
+        );
+        let path_end = output_buffer.len();
+        output_buffer.push_str(&base.iri[base.positions.path_end..base.positions.query_end]);
         output_buffer.push_str(&relative.iri);
-        base.positions
+        IriElementsPositions {
+            scheme_end: base.positions.scheme_end,
+            authority_end: base.positions.authority_end,
+            path_end,
+            query_end: path_end + (base.positions.query_end - base.positions.path_end),
+        }
     }
 }
 

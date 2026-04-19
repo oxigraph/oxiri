@@ -30,4 +30,11 @@ fuzz_target!(|data: &[u8]| {
     assert_eq!(valid.path(), unchecked.path());
     assert_eq!(valid.query(), unchecked.query());
     assert_eq!(valid.fragment(), unchecked.fragment());
+    // We check that the parts are valid
+    let reparsed = Iri::parse(valid.as_str()).unwrap();
+    assert_eq!(valid.scheme(), reparsed.scheme());
+    assert_eq!(valid.authority(), reparsed.authority());
+    assert_eq!(valid.path(), reparsed.path());
+    assert_eq!(valid.query(), reparsed.query());
+    assert_eq!(valid.fragment(), reparsed.fragment());
 });
