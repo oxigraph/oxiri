@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use oxiri::Iri;
+use oxiri::{Iri, IriRef};
 use std::str;
 
 fuzz_target!(|data: &[u8]| {
@@ -20,7 +20,7 @@ fuzz_target!(|data: &[u8]| {
     };
     let (absolute, was_relative) = if let Ok(iri) = Iri::parse(iri.to_string()) {
         (iri, false)
-    } else if let Ok(iri) = base.resolve(iri) {
+    } else if let Ok(iri) = IriRef::parse(iri).and_then(|iri| base.resolve(&iri)) {
         (iri, true)
     } else {
         return;
@@ -28,7 +28,7 @@ fuzz_target!(|data: &[u8]| {
     let base = Iri::parse_unchecked(base);
     match base.relativize(&absolute) {
         Ok(relative) => {
-            let from_relative = base.resolve(relative.as_str()).unwrap();
+            let from_relative = base.resolve(&relative).unwrap();
             assert_eq!(
                 absolute, from_relative,
                 "Resolving {relative} computed from {absolute} with base {base} gives {from_relative}"

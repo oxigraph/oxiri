@@ -11,13 +11,13 @@ It allows zero stack allocation IRI validation and resolution.
 
 Example:
 ```rust
-use oxiri::Iri;
+use oxiri::{Iri, IriRef};
 
 // Parse and validate base IRI
 let base_iri = Iri::parse("http://foo.com/bar/baz").unwrap();
 
 // Validate and resolve relative IRI
-let iri = base_iri.resolve("bat#foo").unwrap();
+let iri = base_iri.resolve(&IriRef::parse("bat#foo").unwrap()).unwrap();
 assert_eq!("http://foo.com/bar/bat#foo", iri.as_str());
 
 // Extract IRI components

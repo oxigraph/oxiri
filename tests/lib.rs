@@ -162,8 +162,8 @@ fn test_relative_parsing() {
             }
             Err(error) => panic!("{} on relative IRI {}", error, e),
         }
-        match base.resolve(e) {
-            Ok(iri) => assert_eq!(base.resolve_unchecked(e), iri),
+        match base.resolve(&unchecked) {
+            Ok(iri) => assert_eq!(base.resolve_unchecked(&unchecked), iri),
             Err(error) => panic!("{} on relative IRI {}", error, e),
         }
     }
@@ -280,7 +280,7 @@ fn test_wrong_relative_parsing() {
 
     let base = Iri::parse("http://a/b/c/d;p?q").unwrap();
     for e in examples {
-        let result = base.resolve(e);
+        let result = IriRef::parse(e).and_then(|e| base.resolve(&e));
         assert!(result.is_err(), "{} is wrongly considered valid", e);
     }
 }
@@ -291,7 +291,7 @@ fn test_wrong_relative_parsing_on_scheme() {
 
     let base = Iri::parse("x:").unwrap();
     for e in examples {
-        let result = base.resolve(e);
+        let result = IriRef::parse(e).and_then(|e| base.resolve(&e));
         assert!(result.is_err(), "{} is wrongly considered valid", e);
     }
 }
@@ -938,9 +938,10 @@ fn test_resolve_relative_iri() {
     ];
 
     for (relative, base, output) in examples {
+        let relative = IriRef::parse(relative).unwrap();
         let base = Iri::parse(base).unwrap();
         let output = Iri::parse(output).unwrap();
-        match base.resolve(relative) {
+        match base.resolve(&relative) {
             Ok(result) => {
                 assert_eq!(
                     result,
@@ -958,7 +959,7 @@ fn test_resolve_relative_iri() {
                 relative, base, error
             ),
         }
-        let result = base.resolve_unchecked(relative);
+        let result = base.resolve_unchecked(&relative);
         assert_eq!(
             result.as_str(),
             output,
@@ -1069,7 +1070,8 @@ fn test_resolve_relative_iri_unchecked() {
 
     for (relative, base, output) in examples {
         let base = Iri::parse_unchecked(base);
-        let result = base.resolve_unchecked(relative);
+        let relative = IriRef::parse_unchecked(relative);
+        let result = base.resolve_unchecked(&relative);
         assert_eq!(
             result.as_str(),
             output,
@@ -1099,7 +1101,8 @@ fn test_resolve_relative_iri_relative_base() {
     for (relative, base, output) in examples {
         let base = IriRef::parse(base).unwrap();
         let output = IriRef::parse(output).unwrap();
-        match base.resolve(relative) {
+        let relative = IriRef::parse(relative).unwrap();
+        match base.resolve(&relative) {
             Ok(result) => {
                 assert_eq!(
                     result,
@@ -1117,7 +1120,7 @@ fn test_resolve_relative_iri_relative_base() {
                 relative, base, error
             ),
         }
-        let result = base.resolve_unchecked(relative);
+        let result = base.resolve_unchecked(&relative);
         assert_eq!(
             result.as_str(),
             output,
@@ -1257,7 +1260,7 @@ fn test_relativize_iri() {
         assert_eq!(actual.path(), output.path());
         assert_eq!(actual.query(), output.query());
         assert_eq!(actual.fragment(), output.fragment());
-        let resolved = base.resolve(actual.as_str()).unwrap();
+        let resolved = base.resolve(&actual).unwrap();
         assert_eq!(
             resolved, original,
             "Resolving {actual} against {base} gives {resolved} and not {original}"

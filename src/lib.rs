@@ -27,7 +27,7 @@ use std::str::FromStr;
 /// let base_iri = IriRef::parse("../bar/baz")?;
 ///
 /// // Validate and resolve relative IRI
-/// let iri = base_iri.resolve("bat#foo")?;
+/// let iri = base_iri.resolve(&IriRef::parse("bat#foo")?)?;
 /// assert_eq!(iri.into_inner(), "../bar/bat#foo");
 ///
 /// // IriRef's *can* also be absolute.
@@ -83,32 +83,34 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// use oxiri::IriRef;
     ///
     /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
-    /// let iri = base_iri.resolve("bat#foo")?;
+    /// let iri = base_iri.resolve(&IriRef::parse("bat#foo")?)?;
     /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve(&self, iri: &str) -> Result<IriRef<String>, IriParseError> {
-        let reference = IriRef::parse(iri)?;
-        let mut iri = String::new();
-        let positions = resolve(self, &reference, &mut iri);
-        let resolved = IriRef { iri, positions };
+    pub fn resolve<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+    ) -> Result<IriRef<String>, IriParseError> {
+        let resolved = self.resolve_unchecked(reference);
         validate_resolved_path(&resolved)?;
         Ok(resolved)
     }
 
-    /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation.
+    /// Variant of [`resolve`](Self::resolve) that assumes that the resolve IRI is valid to skip validation.
     ///
     /// ```
     /// use oxiri::IriRef;
     ///
     /// let base_iri = IriRef::parse_unchecked("//foo.com/bar/baz");
-    /// let iri = base_iri.resolve_unchecked("bat#foo");
+    /// let iri = base_iri.resolve_unchecked(&IriRef::parse_unchecked("bat#foo"));
     /// assert_eq!(iri.into_inner(), "//foo.com/bar/bat#foo");
     /// ```
-    pub fn resolve_unchecked(&self, iri: &str) -> IriRef<String> {
-        let reference = IriRef::parse_unchecked(iri);
+    pub fn resolve_unchecked<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+    ) -> IriRef<String> {
         let mut iri = String::new();
-        let positions = resolve(self, &reference, &mut iri);
+        let positions = resolve(self, reference, &mut iri);
         IriRef { iri, positions }
     }
 
@@ -124,13 +126,16 @@ impl<T: Deref<Target = str>> IriRef<T> {
     ///
     /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into("bat#foo", &mut result)?;
+    /// let iri = base_iri.resolve_into(&IriRef::parse("bat#foo")?, &mut result)?;
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        let reference = IriRef::parse(iri)?;
-        let positions = resolve(self, &reference, target_buffer);
+    pub fn resolve_into<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+        target_buffer: &mut String,
+    ) -> Result<(), IriParseError> {
+        let positions = resolve(self, reference, target_buffer);
         validate_resolved_path(&IriRef {
             iri: target_buffer.as_str(),
             positions,
@@ -138,19 +143,22 @@ impl<T: Deref<Target = str>> IriRef<T> {
         Ok(())
     }
 
-    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation.
+    /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the resolved IRI is valid to skip validation.
     ///
     /// ```
     /// use oxiri::IriRef;
     ///
     /// let base_iri = IriRef::parse_unchecked("//foo.com/bar/baz");
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result);
+    /// let iri = base_iri.resolve_into_unchecked(&IriRef::parse_unchecked("bat#foo"), &mut result);
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// ```
-    pub fn resolve_into_unchecked(&self, iri: &str, target_buffer: &mut String) {
-        let reference = IriRef::parse_unchecked(iri);
-        resolve(self, &reference, target_buffer);
+    pub fn resolve_into_unchecked<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+        target_buffer: &mut String,
+    ) {
+        resolve(self, reference, target_buffer);
     }
 
     /// Returns an `IriRef` borrowing this IRI's text.
@@ -531,7 +539,7 @@ impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for IriRef
 /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
 ///
 /// // Validate and resolve relative IRI
-/// let iri = base_iri.resolve("bat#foo")?;
+/// let iri = base_iri.resolve(&IriRef::parse("bat#foo")?)?;
 /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
 ///
 /// // Iri::parse will err on relative IRIs.
@@ -581,28 +589,34 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Use [`resolve_unchecked`](Self::resolve_unchecked) if you already know the IRI is valid to get faster processing.
     ///
     /// ```
-    /// use oxiri::Iri;
+    /// use oxiri::{Iri, IriRef};
     ///
     /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
-    /// let iri = base_iri.resolve("bat#foo")?;
+    /// let iri = base_iri.resolve(&IriRef::parse("bat#foo")?)?;
     /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve(&self, iri: &str) -> Result<Iri<String>, IriParseError> {
-        Ok(Iri(self.0.resolve(iri)?))
+    pub fn resolve<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+    ) -> Result<Iri<String>, IriParseError> {
+        Ok(Iri(self.0.resolve(reference)?))
     }
 
     /// Variant of [`resolve`](Self::resolve) that assumes that the IRI is valid to skip validation.
     ///
     /// ```
-    /// use oxiri::Iri;
+    /// use oxiri::{Iri, IriRef};
     ///
     /// let base_iri = Iri::parse_unchecked("http://foo.com/bar/baz");
-    /// let iri = base_iri.resolve_unchecked("bat#foo");
+    /// let iri = base_iri.resolve_unchecked(&IriRef::parse_unchecked("bat#foo"));
     /// assert_eq!(iri.into_inner(), "http://foo.com/bar/bat#foo");
     /// ```
-    pub fn resolve_unchecked(&self, iri: &str) -> Iri<String> {
-        Iri(self.0.resolve_unchecked(iri))
+    pub fn resolve_unchecked<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+    ) -> Iri<String> {
+        Iri(self.0.resolve_unchecked(reference))
     }
 
     /// Validates and resolved a relative IRI against the current IRI
@@ -613,30 +627,38 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Use [`resolve_into_unchecked`](Self::resolve_into_unchecked) if you already know the IRI is valid to get faster processing.
     ///
     /// ```
-    /// use oxiri::Iri;
+    /// use oxiri::{Iri, IriRef};
     ///
     /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into("bat#foo", &mut result)?;
+    /// let iri = base_iri.resolve_into(&IriRef::parse("bat#foo")?, &mut result)?;
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// # Result::<(), oxiri::IriParseError>::Ok(())
     /// ```
-    pub fn resolve_into(&self, iri: &str, target_buffer: &mut String) -> Result<(), IriParseError> {
-        self.0.resolve_into(iri, target_buffer)
+    pub fn resolve_into<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+        target_buffer: &mut String,
+    ) -> Result<(), IriParseError> {
+        self.0.resolve_into(reference, target_buffer)
     }
 
     /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation.
     ///
     /// ```
-    /// use oxiri::Iri;
+    /// use oxiri::{Iri, IriRef};
     ///
     /// let base_iri = Iri::parse_unchecked("http://foo.com/bar/baz");
     /// let mut result = String::default();
-    /// let iri = base_iri.resolve_into_unchecked("bat#foo", &mut result);
+    /// let iri = base_iri.resolve_into_unchecked(&IriRef::parse_unchecked("bat#foo"), &mut result);
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
-    pub fn resolve_into_unchecked(&self, iri: &str, target_buffer: &mut String) {
-        self.0.resolve_into_unchecked(iri, target_buffer)
+    pub fn resolve_into_unchecked<T2: Deref<Target = str>>(
+        &self,
+        reference: &IriRef<T2>,
+        target_buffer: &mut String,
+    ) {
+        self.0.resolve_into_unchecked(reference, target_buffer)
     }
 
     /// Returns an IRI that, when resolved against the current IRI returns `abs`.

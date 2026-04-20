@@ -1,6 +1,6 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use oxiri::Iri;
+use oxiri::IriRef;
 use std::str;
 
 fuzz_target!(|data: &[u8]| {
@@ -11,16 +11,18 @@ fuzz_target!(|data: &[u8]| {
     let Ok(relative) = str::from_utf8(relative) else {
         return;
     };
+    let relative = IriRef::parse_unchecked(relative);
     let Ok(base) = str::from_utf8(base) else {
         return;
     };
-    let Ok(base) = Iri::parse(base) else {
+    let Ok(base) = IriRef::parse(base) else {
         return;
     };
-    let unchecked = base.resolve_unchecked(relative);
-    let Ok(valid) = base.resolve(relative) else {
+    let unchecked = base.resolve_unchecked(&relative);
+    let Ok(valid) = base.resolve(&relative) else {
         return;
     };
+
     // We check that unchecked resolving gives the same result
     assert_eq!(valid, unchecked);
     assert_eq!(valid.scheme(), unchecked.scheme());
