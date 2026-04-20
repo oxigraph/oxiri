@@ -91,9 +91,12 @@ impl<T: Deref<Target = str>> IriRef<T> {
         &self,
         reference: &IriRef<T2>,
     ) -> Result<IriRef<String>, IriParseError> {
-        let resolved = self.resolve_unchecked(reference);
-        validate_resolved_path(&resolved)?;
-        Ok(resolved)
+        let mut iri = String::new();
+        let (positions, error) = resolve(self, reference, &mut iri);
+        if let Some(error) = error {
+            return Err(error.into());
+        }
+        Ok(IriRef { iri, positions })
     }
 
     /// Variant of [`resolve`](Self::resolve) that assumes that the resolve IRI is valid to skip validation.
@@ -110,7 +113,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
         reference: &IriRef<T2>,
     ) -> IriRef<String> {
         let mut iri = String::new();
-        let positions = resolve(self, reference, &mut iri);
+        let (positions, _) = resolve(self, reference, &mut iri);
         IriRef { iri, positions }
     }
 
@@ -135,11 +138,10 @@ impl<T: Deref<Target = str>> IriRef<T> {
         reference: &IriRef<T2>,
         target_buffer: &mut String,
     ) -> Result<(), IriParseError> {
-        let positions = resolve(self, reference, target_buffer);
-        validate_resolved_path(&IriRef {
-            iri: target_buffer.as_str(),
-            positions,
-        })?;
+        let (_, error) = resolve(self, reference, target_buffer);
+        if let Some(error) = error {
+            return Err(error.into());
+        }
         Ok(())
     }
 
@@ -532,8 +534,8 @@ impl<'de, T: Deref<Target = str> + Deserialize<'de>> Deserialize<'de> for IriRef
 /// unlike [`IriRef`].
 ///
 /// ```
-/// use std::convert::TryFrom;
 /// use oxiri::{Iri, IriRef};
+/// use std::convert::TryFrom;
 ///
 /// // Parse and validate base IRI
 /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
@@ -1216,6 +1218,12 @@ impl fmt::Display for IriParseError {
             IriParseErrorKind::PathStartingWithTwoSlashes => {
                 write!(f, "An IRI path is not allowed to start with //")
             }
+            IriParseErrorKind::ResolvingDotSegmentsNonHierarchical => {
+                write!(
+                    f,
+                    "Trying to resolve dot segments against a relative non hierarchical IRI path"
+                )
+            }
         }
     }
 }
@@ -1248,6 +1256,7 @@ enum IriParseErrorKind {
     InvalidIriCodePoint(char),
     InvalidPercentEncoding([Option<char>; 3]),
     PathStartingWithTwoSlashes,
+    ResolvingDotSegmentsNonHierarchical,
 }
 
 /// An error raised when calling [`Iri::relativize`].
@@ -1672,26 +1681,18 @@ fn is_ucschar(c: char) -> bool {
         | '\u{E1000}'..='\u{EFFFD}')
 }
 
-fn validate_resolved_path<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriParseError> {
-    if iri.positions.scheme_end == iri.positions.authority_end
-        && iri.iri[iri.positions.authority_end..].starts_with("//")
-    {
-        return Err(IriParseErrorKind::PathStartingWithTwoSlashes.into());
-    }
-    Ok(())
-}
-
 /// Implement relative resolution transform: https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.2
 fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     base: &IriRef<T1>,
     relative: &IriRef<T2>,
     output_buffer: &mut String,
-) -> IriElementsPositions {
-    if relative.is_absolute() {
+) -> (IriElementsPositions, Option<IriParseErrorKind>) {
+    let mut error = None;
+    let positions = if relative.is_absolute() {
         output_buffer.reserve_exact(relative.iri.len());
         output_buffer.push_str(&relative.iri[..relative.positions.authority_end]);
         write_path_without_dot_segments_to(
-            &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+            relative.path(),
             output_buffer,
             relative.positions.authority_end,
             false,
@@ -1709,7 +1710,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
         output_buffer.push_str(&base.iri[..base.positions.scheme_end]);
         output_buffer.push_str(&relative.iri[..relative.positions.authority_end]);
         write_path_without_dot_segments_to(
-            &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+            relative.path(),
             output_buffer,
             base.positions.scheme_end + relative.positions.authority_end,
             false,
@@ -1742,15 +1743,16 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
             write_path_without_dot_segments_to(
-                &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                relative.path(),
                 output_buffer,
                 base.positions.authority_end,
                 true,
             );
-        } else if let Some(last_slash_position) = memrchr(
-            b'/',
-            base.iri[base.positions.authority_end..base.positions.path_end].as_bytes(),
-        ) {
+        } else if let Some(last_slash_position) = memrchr(b'/', base.path().as_bytes()) {
+            if base.positions.scheme_end == 0 && &base.path()[last_slash_position + 1..] == ".." {
+                // we don't support ".." when resolving against relative paths
+                error = Some(IriParseErrorKind::ResolvingDotSegmentsNonHierarchical);
+            }
             output_buffer.reserve_exact(
                 base.positions.authority_end
                     + last_slash_position
@@ -1758,41 +1760,38 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                     + 1,
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
-            if base.positions.authority_end > 0 {
-                write_path_without_dot_segments_to(
-                    &base.iri[base.positions.authority_end..][..last_slash_position + 1],
-                    output_buffer,
-                    base.positions.authority_end,
-                    false,
-                );
-                let with_prefix_slash = if output_buffer.ends_with('/') {
-                    output_buffer.pop();
-                    true
-                } else {
-                    false
-                };
-                write_path_without_dot_segments_to(
-                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
-                    output_buffer,
-                    base.positions.authority_end,
-                    with_prefix_slash,
-                );
+            write_path_without_dot_segments_to(
+                &base.path()[..last_slash_position + 1],
+                output_buffer,
+                base.positions.authority_end,
+                false,
+            );
+            let with_prefix_slash = if output_buffer.ends_with('/') {
+                output_buffer.pop();
+                true
             } else {
-                // We just concatenate the two relative paths, we don't attempt to remove dot segments because it can end up badly
-                output_buffer
-                    .push_str(&base.iri[base.positions.authority_end..][..last_slash_position + 1]);
-                output_buffer.push_str(
-                    &relative.iri[relative.positions.authority_end..relative.positions.path_end],
-                );
-            }
+                false
+            };
+            write_path_without_dot_segments_to(
+                relative.path(),
+                output_buffer,
+                base.positions.authority_end,
+                with_prefix_slash,
+            );
         } else {
+            if base.positions.authority_end == 0
+                && (relative.path().split('/').any(|c| c == "..") || base.path() == "..")
+            {
+                // we don't support ".." when resolving against relative paths
+                error = Some(IriParseErrorKind::ResolvingDotSegmentsNonHierarchical);
+            }
             output_buffer.reserve_exact(
                 base.positions.authority_end
                     + (relative.iri.len() - relative.positions.authority_end),
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
             write_path_without_dot_segments_to(
-                &relative.iri[relative.positions.authority_end..relative.positions.path_end],
+                relative.path(),
                 output_buffer,
                 base.positions.authority_end,
                 false,
@@ -1810,7 +1809,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
         output_buffer.reserve_exact(base.positions.path_end + relative.iri.len());
         output_buffer.push_str(&base.iri[..base.positions.authority_end]);
         write_path_without_dot_segments_to(
-            &base.iri[base.positions.authority_end..base.positions.path_end],
+            base.path(),
             output_buffer,
             base.positions.authority_end,
             false,
@@ -1827,7 +1826,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
         output_buffer.reserve_exact(base.positions.query_end + relative.iri.len());
         output_buffer.push_str(&base.iri[..base.positions.authority_end]);
         write_path_without_dot_segments_to(
-            &base.iri[base.positions.authority_end..base.positions.path_end],
+            base.path(),
             output_buffer,
             base.positions.authority_end,
             false,
@@ -1841,7 +1840,14 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             path_end,
             query_end: path_end + (base.positions.query_end - base.positions.path_end),
         }
+    };
+    // We validate that we have not converted a path into an authority
+    if positions.scheme_end == positions.authority_end
+        && output_buffer[positions.authority_end..].starts_with("//")
+    {
+        error = Some(IriParseErrorKind::PathStartingWithTwoSlashes);
     }
+    (positions, error)
 }
 
 /// Implement https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.4
@@ -1851,6 +1857,19 @@ fn write_path_without_dot_segments_to(
     output_path_start: usize,
     with_prefix_slash: bool,
 ) {
+    if output_path_start == 0
+        && !output.bytes().next().map_or_else(
+            || with_prefix_slash || input.bytes().next() == Some(b'/'),
+            |c| c == b'/',
+        )
+    {
+        // We are resolving against a relative path, we don't try to remove dot segments
+        if with_prefix_slash {
+            output.push('/');
+        }
+        output.push_str(input);
+        return;
+    }
     if with_prefix_slash {
         if input.starts_with("./") {
             input = &input[1..];

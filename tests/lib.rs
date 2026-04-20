@@ -67,7 +67,6 @@ fn test_relative_parsing() {
         "mailto:user@host?subject=blah",
         "dav:",   // empty opaque part / rel-path allowed by RFC 2396bis
         "about:", // empty opaque part / rel-path allowed by RFC 2396bis
-        //
         // the following test cases are from a Perl script by David A. Wheeler
         // at http://www.dwheeler.com/secure-programs/url.pl
         "http://www.yahoo.com",
@@ -183,7 +182,6 @@ fn test_wrong_relative_parsing() {
         "http://www yahoo.com",
         "http://www.yahoo.com/hello world/",
         "http://www.yahoo.com/yelp.html#\"",
-        //
         // the following test cases are from a Haskell program by Graham Klyne
         // at http://www.ninebynine.org/Software/HaskellUtils/Network/URITest.hs
         "[2010:836B:4179::836B:4179]",
@@ -286,13 +284,22 @@ fn test_wrong_relative_parsing() {
 }
 
 #[test]
-fn test_wrong_relative_parsing_on_scheme() {
-    let examples = [".///C:::"];
+fn test_wrong_relative_parsing_with_specific_bases() {
+    let examples = [
+        (".///C:::", "x:"),
+        ("..", "a"),
+        ("a", ".."),
+        ("a", "../.."),
+        ("../..", "a"),
+    ];
 
-    let base = Iri::parse("x:").unwrap();
-    for e in examples {
-        let result = IriRef::parse(e).and_then(|e| base.resolve(&e));
-        assert!(result.is_err(), "{} is wrongly considered valid", e);
+    for (relative, base) in examples {
+        let base = IriRef::parse(base).unwrap();
+        let result = IriRef::parse(relative).and_then(|e| base.resolve(&e));
+        assert!(
+            result.is_err(),
+            "{relative} resolved against {base} is wrongly considered valid"
+        );
     }
 }
 
@@ -1093,6 +1100,12 @@ fn test_resolve_relative_iri_relative_base() {
         ("baz", "../foo/bar", "../foo/baz"),
         ("baz", "././foo/bar", "././foo/baz"),
         ("baz", "../../foo/bar", "../../foo/baz"),
+        (".", "", "."),
+        ("", ".", "."),
+        ("foo", "/", "/foo"),
+        ("..", "/", "/"),
+        ("..", "/foo", "/"),
+        ("..", "/foo/", "/"),
     ];
 
     for (relative, base, output) in examples {
