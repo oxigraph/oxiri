@@ -197,7 +197,8 @@ fn iri_resolve(c: &mut Criterion) {
         b.iter(|| {
             for relative in examples.iter() {
                 buf.clear();
-                base.resolve_into(relative, &mut buf).unwrap();
+                base.resolve_into(&IriRef::parse(*relative).unwrap(), &mut buf)
+                    .unwrap();
             }
         })
     });
@@ -205,7 +206,7 @@ fn iri_resolve(c: &mut Criterion) {
         b.iter(|| {
             for relative in examples.iter() {
                 buf.clear();
-                base.resolve_into_unchecked(relative, &mut buf);
+                base.resolve_into_unchecked(&IriRef::parse_unchecked(*relative), &mut buf);
             }
         })
     });
@@ -259,7 +260,7 @@ fn iri_relativize(c: &mut Criterion) {
         "./g:h",
     ]
     .into_iter()
-    .map(|iri| base.resolve(iri).unwrap())
+    .map(|iri| base.resolve(&IriRef::parse(iri).unwrap()).unwrap())
     .collect::<Vec<_>>();
 
     c.bench_function("Iri::relativize", |b| {
