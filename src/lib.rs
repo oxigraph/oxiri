@@ -1285,12 +1285,14 @@ struct IriElementsPositions {
     query_end: usize,
 }
 
+#[inline]
 fn find_iri_positions(iri: &str) -> IriElementsPositions {
     let iri = iri.as_bytes();
     let scheme_end = memchr(b':', iri).map_or(0, |l| l + 1);
     find_iri_positions_knowing_scheme_end(iri, scheme_end)
 }
 
+#[inline]
 fn find_iri_positions_knowing_scheme_end(iri: &[u8], scheme_end: usize) -> IriElementsPositions {
     let path_end = memchr2(b'?', b'#', &iri[scheme_end..]).map_or(iri.len(), |l| scheme_end + l);
     let query_end = memchr(b'#', &iri[path_end..]).map_or(iri.len(), |l| path_end + l);
@@ -1308,6 +1310,7 @@ fn find_iri_positions_knowing_scheme_end(iri: &[u8], scheme_end: usize) -> IriEl
     }
 }
 
+#[inline]
 fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
     let iri = iri.as_bytes();
     match iri.first().copied() {
@@ -1343,6 +1346,7 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
     }
 }
 
+#[inline]
 fn find_scheme_end_for_iri_ref(iri: &[u8]) -> usize {
     for (index, c) in iri.iter().copied().enumerate() {
         match c {
