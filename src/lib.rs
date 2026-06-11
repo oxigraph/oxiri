@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr3, memrchr};
+use memchr::{memchr, memchr2, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -1337,21 +1337,21 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
         _ => {
             // let's guess if we start with a scheme or a path
             // for that we need to find the first character that is ':', '?', '/' or '#' and see if it's ':'
-            // code is a bit painful because there is no memchr4
-            let scheme_end = memchr3(b':', b'?', b'/', iri).map_or(0, |index| {
-                if iri[index] == b':' {
-                    if memchr(b'#', &iri[..index]).is_some() {
-                        0 // actually not a scheme but path + fragment
-                    } else {
-                        index + 1
-                    }
-                } else {
-                    0
-                }
-            });
+            let scheme_end = find_scheme_end_for_iri_ref(iri);
             find_iri_positions_knowing_scheme_end(iri, scheme_end)
         }
     }
+}
+
+fn find_scheme_end_for_iri_ref(iri: &[u8]) -> usize {
+    for (index, c) in iri.iter().copied().enumerate() {
+        match c {
+            b':' => return index + 1,
+            b'?' | b'/' | b'#' => return 0,
+            _ => (),
+        }
+    }
+    0
 }
 
 fn validate_iri<T: Deref<Target = str>>(iri: &Iri<T>) -> Result<(), IriParseError> {
