@@ -1605,21 +1605,34 @@ fn validate_code_point_or_echar(
     ascii_validator: [bool; 256],
     is_valid: impl Fn(char) -> bool,
 ) -> Result<(), IriParseError> {
-    if input.bytes().all(|c| ascii_validator[usize::from(c)]) {
-        return Ok(());
-    }
-    let mut chars = input.chars();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let c1 = chars.next();
-            let c2 = chars.next();
-            if !(c1.is_some_and(|c| c.is_ascii_hexdigit())
-                && c2.is_some_and(|c| c.is_ascii_hexdigit()))
-            {
-                return Err(IriParseErrorKind::InvalidPercentEncoding([Some('%'), c1, c2]).into());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            c if ascii_validator[usize::from(c)] => i += 1,
+            b'%' => {
+                if !(bytes.get(i + 1).is_some_and(|c| c.is_ascii_hexdigit())
+                    && bytes.get(i + 2).is_some_and(|c| c.is_ascii_hexdigit()))
+                {
+                    let mut chars = input[i + 1..].chars();
+                    let c1 = chars.next();
+                    let c2 = chars.next();
+                    return Err(
+                        IriParseErrorKind::InvalidPercentEncoding([Some('%'), c1, c2]).into(),
+                    );
+                }
+                i += 3;
             }
-        } else if !is_valid(c) {
-            return Err(IriParseErrorKind::InvalidIriCodePoint(c).into());
+            0x80.. => {
+                let c = input[i..].chars().next().unwrap();
+                if !is_valid(c) {
+                    return Err(IriParseErrorKind::InvalidIriCodePoint(c).into());
+                }
+                i += c.len_utf8();
+            }
+            c => {
+                return Err(IriParseErrorKind::InvalidIriCodePoint(c.into()).into());
+            }
         }
     }
     Ok(())
