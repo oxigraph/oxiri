@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memrchr};
+use memchr::{memchr, memchr2, memchr_iter, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -693,10 +693,8 @@ impl<T: Deref<Target = str>> Iri<T> {
         let base_query = base.query();
 
         // We validate the path, resolving algorithm eats /. and /.. in hierarchical path
-        for segment in abs_path.split('/') {
-            if matches!(segment, "." | "..") {
-                return Err(IriRelativizeError {});
-            }
+        if has_dot_segment(abs_path) {
+            return Err(IriRelativizeError {});
         }
 
         if abs.scheme() != base.scheme()
@@ -1358,6 +1356,21 @@ fn find_scheme_end_for_iri_ref(iri: &[u8]) -> usize {
     0
 }
 
+fn has_dot_segment(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    for dot_offset in memchr_iter(b'.', bytes) {
+        if dot_offset == 0
+            || bytes[dot_offset - 1] == b'/'
+                && bytes.get(dot_offset + 1).is_none_or(|b| {
+                    *b == b'/' || *b == b'.' && bytes.get(dot_offset + 2).is_none_or(|b| *b == b'/')
+                })
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn validate_iri<T: Deref<Target = str>>(iri: &Iri<T>) -> Result<(), IriParseError> {
     if !iri.0.is_absolute() {
         return Err(IriParseErrorKind::NoScheme.into());
@@ -1866,6 +1879,7 @@ fn write_path_without_dot_segments_to(
             || with_prefix_slash || input.bytes().next() == Some(b'/'),
             |c| c == b'/',
         )
+        || !has_dot_segment(input)
     {
         // We are resolving against a relative path, we don't try to remove dot segments
         if with_prefix_slash {
