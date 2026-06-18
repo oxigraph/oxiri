@@ -1356,6 +1356,7 @@ fn find_scheme_end_for_iri_ref(iri: &[u8]) -> usize {
     0
 }
 
+#[inline]
 fn has_dot_segment(path: &str) -> bool {
     let bytes = path.as_bytes();
     for dot_offset in memchr_iter(b'.', bytes) {
@@ -1371,6 +1372,7 @@ fn has_dot_segment(path: &str) -> bool {
     false
 }
 
+#[inline]
 fn validate_iri<T: Deref<Target = str>>(iri: &Iri<T>) -> Result<(), IriParseError> {
     if !iri.0.is_absolute() {
         return Err(IriParseErrorKind::NoScheme.into());
@@ -1379,6 +1381,7 @@ fn validate_iri<T: Deref<Target = str>>(iri: &Iri<T>) -> Result<(), IriParseErro
     Ok(())
 }
 
+#[inline]
 fn validate_iri_ref<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriParseError> {
     if iri.positions.scheme_end > 0 {
         validate_scheme(&iri.iri[..iri.positions.scheme_end - 1])?;
@@ -1396,6 +1399,7 @@ fn validate_iri_ref<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriPa
     Ok(())
 }
 
+#[inline]
 fn validate_scheme(scheme: &str) -> Result<(), IriParseError> {
     const SCHEME_CHARACTER: [bool; 256] = {
         let mut allowed = [false; 256];
@@ -1429,6 +1433,7 @@ fn validate_scheme(scheme: &str) -> Result<(), IriParseError> {
     Ok(())
 }
 
+#[inline]
 fn validate_authority(authority: &str) -> Result<(), IriParseError> {
     const UNRESERVED_SUB_DELIMS_TWO_DOTS: [bool; 256] = {
         let mut allowed = [false; 256];
@@ -1486,6 +1491,7 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
     Ok(())
 }
 
+#[inline]
 fn validate_ip(ip: &str) -> Result<(), IriParseError> {
     if ip.starts_with('v') || ip.starts_with('V') {
         validate_ip_v_future(ip)
@@ -1497,6 +1503,7 @@ fn validate_ip(ip: &str) -> Result<(), IriParseError> {
 }
 
 // IPvFuture      = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
+#[inline]
 fn validate_ip_v_future(ip: &str) -> Result<(), IriParseError> {
     const UNRESERVED_SUB_DELIMS_TWO_DOTS: [bool; 256] = {
         let mut allowed = [false; 256];
@@ -1542,6 +1549,7 @@ fn validate_ip_v_future(ip: &str) -> Result<(), IriParseError> {
     Ok(())
 }
 
+#[inline]
 fn validate_port(port: &str) -> Result<(), IriParseError> {
     let mut chars = port.bytes();
     for c in &mut chars {
@@ -1558,6 +1566,7 @@ fn validate_port(port: &str) -> Result<(), IriParseError> {
     Ok(())
 }
 
+#[inline]
 fn validate_path(path: &str) -> Result<(), IriParseError> {
     const PCHAR_OR_SLASH: [bool; 256] = {
         let mut allowed = [false; 256];
@@ -1571,6 +1580,7 @@ fn validate_path(path: &str) -> Result<(), IriParseError> {
     })
 }
 
+#[inline]
 fn validate_query(query: &str) -> Result<(), IriParseError> {
     const PCHAR_OR_SLASH_OR_QUESTION_MARK: [bool; 256] = {
         let mut allowed = [false; 256];
@@ -1587,6 +1597,7 @@ fn validate_query(query: &str) -> Result<(), IriParseError> {
     })
 }
 
+#[inline]
 fn validate_fragment(fragment: &str) -> Result<(), IriParseError> {
     const PCHAR_OR_SLASH_OR_QUESTION_MARK: [bool; 256] = {
         let mut allowed = [false; 256];
@@ -1600,6 +1611,7 @@ fn validate_fragment(fragment: &str) -> Result<(), IriParseError> {
     })
 }
 
+#[inline]
 fn validate_code_point_or_echar(
     input: &str,
     ascii_validator: [bool; 256],
@@ -1638,6 +1650,7 @@ fn validate_code_point_or_echar(
     Ok(())
 }
 
+#[inline]
 const fn set_alpha(allowed: &mut [bool; 256]) {
     let mut i = b'a';
     while i <= b'z' {
@@ -1651,6 +1664,7 @@ const fn set_alpha(allowed: &mut [bool; 256]) {
     }
 }
 
+#[inline]
 const fn set_digit(allowed: &mut [bool; 256]) {
     let mut i = b'0';
     while i <= b'9' {
@@ -1659,6 +1673,7 @@ const fn set_digit(allowed: &mut [bool; 256]) {
     }
 }
 
+#[inline]
 const fn set_unreserved(allowed: &mut [bool; 256]) {
     set_alpha(allowed);
     set_digit(allowed);
@@ -1668,6 +1683,7 @@ const fn set_unreserved(allowed: &mut [bool; 256]) {
     allowed[b'~' as usize] = true;
 }
 
+#[inline]
 const fn set_sub_delims(allowed: &mut [bool; 256]) {
     allowed[b'!' as usize] = true;
     allowed[b'$' as usize] = true;
@@ -1682,6 +1698,7 @@ const fn set_sub_delims(allowed: &mut [bool; 256]) {
     allowed[b'=' as usize] = true;
 }
 
+#[inline]
 const fn set_pchar(allowed: &mut [bool; 256]) {
     set_unreserved(allowed);
     set_sub_delims(allowed);
@@ -1689,6 +1706,7 @@ const fn set_pchar(allowed: &mut [bool; 256]) {
     allowed[b'@' as usize] = true;
 }
 
+#[inline]
 fn is_ucschar(c: char) -> bool {
     matches!(
         c,
@@ -1881,6 +1899,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
 }
 
 /// Implement https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.4
+#[inline]
 fn write_path_without_dot_segments_to(
     mut input: &str,
     output: &mut String,
@@ -1950,6 +1969,7 @@ fn write_path_without_dot_segments_to(
     }
 }
 
+#[inline]
 fn remove_last_segment(output: &mut String, output_path_start: usize) {
     let last_slash_position = memrchr(b'/', &output.as_bytes()[output_path_start..]).unwrap_or(0);
     output.truncate(output_path_start + last_slash_position);
