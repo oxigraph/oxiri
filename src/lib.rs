@@ -1318,7 +1318,7 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
         }
         Some(b'?') => {
             // query + fragment only
-            let query_end = memchr(b'#', iri).unwrap_or(iri.len());
+            let query_end = memchr(b'#', &iri[1..]).map_or(iri.len(), |p| p + 1);
             IriElementsPositions {
                 scheme_end: 0,
                 authority_end: 0,
@@ -1384,7 +1384,7 @@ fn validate_iri_ref<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriPa
         validate_scheme(&iri.iri[..iri.positions.scheme_end - 1])?;
     }
     if iri.positions.authority_end > iri.positions.scheme_end {
-        validate_authority(&iri.iri[iri.positions.scheme_end..iri.positions.authority_end])?;
+        validate_authority(&iri.iri[iri.positions.scheme_end + 2..iri.positions.authority_end])?;
     }
     validate_path(&iri.iri[iri.positions.authority_end..iri.positions.path_end])?;
     if iri.positions.query_end > iri.positions.path_end {
@@ -1444,12 +1444,7 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
         allowed
     };
 
-    let Some(mut remaining_authority) = authority.strip_prefix("//") else {
-        return Err(IriParseErrorKind::InvalidHostCharacter(
-            authority.chars().next().unwrap_or_default(),
-        )
-        .into());
-    };
+    let mut remaining_authority = authority;
     if let Some(username_index) = memchr(b'@', remaining_authority.as_bytes()) {
         let username = &remaining_authority[..username_index];
         remaining_authority = &remaining_authority[username_index + 1..];
