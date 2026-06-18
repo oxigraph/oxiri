@@ -729,16 +729,7 @@ impl<T: Deref<Target = str>> Iri<T> {
             });
         }
         if abs_path != base_path || abs_query.is_none() && base_query.is_some() {
-            let number_of_shared_characters = abs_path
-                .bytes()
-                .zip(base_path.bytes())
-                .take_while(|(l, r)| l == r)
-                .count();
-            // We decrease until finding a /
-            let number_of_shared_characters = abs_path.as_bytes()[..number_of_shared_characters]
-                .iter()
-                .rposition(|c| *c == b'/')
-                .map_or(0, |n| n + 1);
+            let number_of_shared_characters = shared_path_prefix_len(abs_path, base_path);
             return if abs_path[number_of_shared_characters..].starts_with('/')
                 || base_path[number_of_shared_characters..].contains('/')
                 || abs_path[number_of_shared_characters..].contains(':')
@@ -1370,6 +1361,22 @@ fn has_dot_segment(path: &str) -> bool {
         }
     }
     false
+}
+
+#[inline]
+fn shared_path_prefix_len(left: &str, right: &str) -> usize {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    let mut last_slash = 0;
+    for i in 0..left.len().min(right.len()) {
+        if left[i] != right[i] {
+            break;
+        }
+        if left[i] == b'/' {
+            last_slash = i + 1;
+        }
+    }
+    last_slash
 }
 
 #[inline]
