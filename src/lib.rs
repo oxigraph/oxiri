@@ -1360,11 +1360,11 @@ fn find_scheme_end_for_iri_ref(iri: &[u8]) -> usize {
 fn has_dot_segment(path: &str) -> bool {
     let bytes = path.as_bytes();
     for dot_offset in memchr_iter(b'.', bytes) {
-        if dot_offset == 0
-            || bytes[dot_offset - 1] == b'/'
-                && bytes.get(dot_offset + 1).is_none_or(|b| {
-                    *b == b'/' || *b == b'.' && bytes.get(dot_offset + 2).is_none_or(|b| *b == b'/')
-                })
+        if (dot_offset == 0 || bytes[dot_offset - 1] == b'/')
+            && (dot_offset + 1 == bytes.len()
+                || bytes[dot_offset + 1] == b'/'
+                || bytes[dot_offset + 1] == b'.'
+                    && (dot_offset + 2 == bytes.len() || bytes[dot_offset + 2] == b'/'))
         {
             return true;
         }
