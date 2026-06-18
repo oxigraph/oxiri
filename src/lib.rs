@@ -730,14 +730,14 @@ impl<T: Deref<Target = str>> Iri<T> {
         }
         if abs_path != base_path || abs_query.is_none() && base_query.is_some() {
             let number_of_shared_characters = abs_path
-                .chars()
-                .zip(base_path.chars())
+                .bytes()
+                .zip(base_path.bytes())
                 .take_while(|(l, r)| l == r)
-                .map(|(l, _)| l.len_utf8())
-                .sum::<usize>();
+                .count();
             // We decrease until finding a /
-            let number_of_shared_characters = abs_path[..number_of_shared_characters]
-                .rfind('/')
+            let number_of_shared_characters = abs_path.as_bytes()[..number_of_shared_characters]
+                .iter()
+                .rposition(|c| *c == b'/')
                 .map_or(0, |n| n + 1);
             return if abs_path[number_of_shared_characters..].starts_with('/')
                 || base_path[number_of_shared_characters..].contains('/')
