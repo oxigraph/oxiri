@@ -1767,6 +1767,9 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             query_end: path_end + (relative.positions.query_end - relative.positions.path_end),
         }
     } else if relative.positions.path_end > 0 {
+        let relative_path =
+            &relative.iri[relative.positions.authority_end..relative.positions.path_end];
+        let base_path = &base.iri[base.positions.authority_end..base.positions.path_end];
         if relative.iri.starts_with('/') {
             output_buffer.reserve_exact(base.positions.authority_end + relative.iri.len());
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
@@ -1786,13 +1789,13 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
             write_path_without_dot_segments_to(
-                relative.path(),
+                relative_path,
                 output_buffer,
                 base.positions.authority_end,
                 true,
             );
-        } else if let Some(last_slash_position) = memrchr(b'/', base.path().as_bytes()) {
-            if base.positions.scheme_end == 0 && &base.path()[last_slash_position + 1..] == ".." {
+        } else if let Some(last_slash_position) = memrchr(b'/', base_path.as_bytes()) {
+            if base.positions.scheme_end == 0 && &base_path[last_slash_position + 1..] == ".." {
                 // we don't support ".." when resolving against relative paths
                 error = Some(IriParseErrorKind::ResolvingDotSegmentsNonHierarchical);
             }
@@ -1804,7 +1807,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
             write_path_without_dot_segments_to(
-                &base.path()[..last_slash_position + 1],
+                &base_path[..last_slash_position + 1],
                 output_buffer,
                 base.positions.authority_end,
                 false,
@@ -1816,14 +1819,14 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                 false
             };
             write_path_without_dot_segments_to(
-                relative.path(),
+                relative_path,
                 output_buffer,
                 base.positions.authority_end,
                 with_prefix_slash,
             );
         } else {
             if base.positions.authority_end == 0
-                && (relative.path().split('/').any(|c| c == "..") || base.path() == "..")
+                && (relative_path.split('/').any(|c| c == "..") || base_path == "..")
             {
                 // we don't support ".." when resolving against relative paths
                 error = Some(IriParseErrorKind::ResolvingDotSegmentsNonHierarchical);
@@ -1834,7 +1837,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
             write_path_without_dot_segments_to(
-                relative.path(),
+                relative_path,
                 output_buffer,
                 base.positions.authority_end,
                 false,
