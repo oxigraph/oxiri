@@ -1453,7 +1453,7 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
     if let Some(username_index) = memchr(b'@', remaining_authority.as_bytes()) {
         let username = &remaining_authority[..username_index];
         remaining_authority = &remaining_authority[username_index + 1..];
-        validate_code_point_or_echar(username, UNRESERVED_SUB_DELIMS_TWO_DOTS, |c| {
+        validate_code_point_or_echar(username, &UNRESERVED_SUB_DELIMS_TWO_DOTS, |c| {
             c.is_ascii() && UNRESERVED_SUB_DELIMS_TWO_DOTS[c as usize] || is_ucschar(c)
         })?;
     }
@@ -1479,7 +1479,7 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
             remaining_authority = &remaining_authority[..port_index];
         }
         let host = remaining_authority;
-        validate_code_point_or_echar(host, UNRESERVED_SUB_DELIMS, |c| {
+        validate_code_point_or_echar(host, &UNRESERVED_SUB_DELIMS, |c| {
             c.is_ascii() && UNRESERVED_SUB_DELIMS[c as usize] || is_ucschar(c)
         })?;
     }
@@ -1570,7 +1570,7 @@ fn validate_path(path: &str) -> Result<(), IriParseError> {
         allowed
     };
 
-    validate_code_point_or_echar(path, PCHAR_OR_SLASH, |c| {
+    validate_code_point_or_echar(path, &PCHAR_OR_SLASH, |c| {
         c.is_ascii() && PCHAR_OR_SLASH[c as usize] || is_ucschar(c)
     })
 }
@@ -1585,7 +1585,7 @@ fn validate_query(query: &str) -> Result<(), IriParseError> {
         allowed
     };
 
-    validate_code_point_or_echar(query, PCHAR_OR_SLASH_OR_QUESTION_MARK, |c| {
+    validate_code_point_or_echar(query, &PCHAR_OR_SLASH_OR_QUESTION_MARK, |c| {
         c.is_ascii() && PCHAR_OR_SLASH_OR_QUESTION_MARK[c as usize]
             || is_ucschar(c)
             || matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}' | '\u{100000}'..='\u{10FFFD}')
@@ -1601,7 +1601,7 @@ fn validate_fragment(fragment: &str) -> Result<(), IriParseError> {
         allowed[b'?' as usize] = true;
         allowed
     };
-    validate_code_point_or_echar(fragment, PCHAR_OR_SLASH_OR_QUESTION_MARK, |c| {
+    validate_code_point_or_echar(fragment, &PCHAR_OR_SLASH_OR_QUESTION_MARK, |c| {
         c.is_ascii() && PCHAR_OR_SLASH_OR_QUESTION_MARK[c as usize] || is_ucschar(c)
     })
 }
@@ -1609,7 +1609,7 @@ fn validate_fragment(fragment: &str) -> Result<(), IriParseError> {
 #[inline]
 fn validate_code_point_or_echar(
     input: &str,
-    ascii_validator: [bool; 256],
+    ascii_validator: &[bool; 256],
     is_valid: impl Fn(char) -> bool,
 ) -> Result<(), IriParseError> {
     let bytes = input.as_bytes();
@@ -1889,6 +1889,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     (positions, error)
 }
 
+#[inline]
 fn resolve_into_only<T1: Deref<Target = str>, T2: Deref<Target = str>, const CHECKED: bool>(
     base: &IriRef<T1>,
     relative: &IriRef<T2>,
