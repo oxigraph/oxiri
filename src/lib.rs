@@ -1720,7 +1720,7 @@ fn is_ucschar(c: char) -> bool {
 }
 
 /// Implement relative resolution transform: https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.2
-#[inline(always)]
+#[inline]
 fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     base: &IriRef<T1>,
     relative: &IriRef<T2>,
