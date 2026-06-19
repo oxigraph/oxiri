@@ -1,6 +1,7 @@
 use codspeed_criterion_compat::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use oxiri::{Iri, IriRef};
 use std::fs;
+use std::hint::black_box;
 
 const ABS_EXAMPLES: &[&str] = &[
     "file://foo",
@@ -69,7 +70,7 @@ fn iri_parse(c: &mut Criterion) {
     c.bench_function("Iri::parse", |b| {
         b.iter(|| {
             for iri in ABS_EXAMPLES {
-                Iri::parse(*iri).unwrap();
+                Iri::parse(black_box(*iri)).unwrap();
             }
         })
     });
@@ -77,7 +78,7 @@ fn iri_parse(c: &mut Criterion) {
         c.bench_with_input(BenchmarkId::new("Iri::parse", name), &urls, |b, urls| {
             b.iter(|| {
                 for url in urls {
-                    Iri::parse(url.as_str()).unwrap();
+                    Iri::parse(black_box(url.as_str())).unwrap();
                 }
             })
         });
@@ -85,7 +86,7 @@ fn iri_parse(c: &mut Criterion) {
     c.bench_function("Iri::parse_unchecked", |b| {
         b.iter(|| {
             for iri in ABS_EXAMPLES {
-                Iri::parse_unchecked(*iri);
+                Iri::parse_unchecked(black_box(*iri));
             }
         })
     });
@@ -96,7 +97,7 @@ fn iri_parse(c: &mut Criterion) {
             |b, urls| {
                 b.iter(|| {
                     for url in urls {
-                        Iri::parse_unchecked(url.as_str());
+                        Iri::parse_unchecked(black_box(url.as_str()));
                     }
                 })
             },
@@ -108,7 +109,7 @@ fn iri_parse_relative(c: &mut Criterion) {
     c.bench_function("IriRef::parse", |b| {
         b.iter(|| {
             for iri in ABS_EXAMPLES {
-                IriRef::parse(*iri).unwrap();
+                IriRef::parse(black_box(*iri)).unwrap();
             }
         })
     });
@@ -116,7 +117,7 @@ fn iri_parse_relative(c: &mut Criterion) {
         c.bench_with_input(BenchmarkId::new("IriRef::parse", name), &urls, |b, urls| {
             b.iter(|| {
                 for url in urls {
-                    IriRef::parse(url.as_str()).unwrap();
+                    IriRef::parse(black_box(url.as_str())).unwrap();
                 }
             })
         });
@@ -124,7 +125,7 @@ fn iri_parse_relative(c: &mut Criterion) {
     c.bench_function("IriRef::parse_unchecked", |b| {
         b.iter(|| {
             for iri in ABS_EXAMPLES {
-                IriRef::parse_unchecked(*iri);
+                IriRef::parse_unchecked(black_box(*iri));
             }
         })
     });
@@ -135,7 +136,7 @@ fn iri_parse_relative(c: &mut Criterion) {
             |b, urls| {
                 b.iter(|| {
                     for url in urls {
-                        IriRef::parse_unchecked(url.as_str());
+                        IriRef::parse_unchecked(black_box(url.as_str()));
                     }
                 })
             },
@@ -197,7 +198,7 @@ fn iri_resolve(c: &mut Criterion) {
         b.iter(|| {
             for relative in examples.iter() {
                 buf.clear();
-                base.resolve_into(&IriRef::parse(*relative).unwrap(), &mut buf)
+                black_box(base).resolve_into(&IriRef::parse(black_box(*relative)).unwrap(), &mut buf)
                     .unwrap();
             }
         })
@@ -206,7 +207,7 @@ fn iri_resolve(c: &mut Criterion) {
         b.iter(|| {
             for relative in examples.iter() {
                 buf.clear();
-                base.resolve_into_unchecked(&IriRef::parse_unchecked(*relative), &mut buf);
+                black_box(base).resolve_into_unchecked(&IriRef::parse_unchecked(black_box(*relative)), &mut buf);
             }
         })
     });
@@ -266,7 +267,7 @@ fn iri_relativize(c: &mut Criterion) {
     c.bench_function("Iri::relativize", |b| {
         b.iter(|| {
             for iri in &examples {
-                base.relativize(iri).unwrap();
+                black_box(base).relativize(black_box(iri)).unwrap();
             }
         })
     });
