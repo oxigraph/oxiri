@@ -34,24 +34,24 @@ fn absolute_url_datasets() -> [(&'static str, Vec<String>); 4] {
     [
         (
             "top_100",
-            parse_file("benches/url-various-datasets/top100/top100.txt"),
+            parse_url_file("benches/url-various-datasets/top100/top100.txt"),
         ),
         (
             "wikipedia",
-            parse_file("benches/url-various-datasets/wikipedia/wikipedia_100k.txt"),
+            parse_url_file("benches/url-various-datasets/wikipedia/wikipedia_100k.txt"),
         ),
         (
             "kasztp",
-            parse_file("benches/url-various-datasets/others/kasztp.txt"),
+            parse_url_file("benches/url-various-datasets/others/kasztp.txt"),
         ),
         (
             "userbait",
-            parse_file("benches/url-various-datasets/others/userbait.txt"),
+            parse_url_file("benches/url-various-datasets/others/userbait.txt"),
         ),
     ]
 }
 
-fn parse_file(path: &str) -> Vec<String> {
+fn parse_url_file(path: &str) -> Vec<String> {
     fs::read_to_string(path)
         .unwrap()
         .lines()
@@ -66,6 +66,25 @@ fn parse_file(path: &str) -> Vec<String> {
         .collect()
 }
 
+fn relative_url_datasets() -> [(&'static str, Vec<(String, String)>); 1] {
+    [(
+        "cc_10k",
+        parse_relative_url_file("benches/relative_urls_cc_10k.csv"),
+    )]
+}
+
+fn parse_relative_url_file(path: &str) -> Vec<(String, String)> {
+    fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .skip(1)
+        .map(|s| {
+            let (base, relative) = s.split_once(',').unwrap();
+            (base.trim().to_owned(), relative.trim().to_owned())
+        })
+        .collect()
+}
+
 fn iri_parse(c: &mut Criterion) {
     c.bench_function("Iri::parse", |b| {
         b.iter(|| {
@@ -75,10 +94,11 @@ fn iri_parse(c: &mut Criterion) {
         })
     });
     for (name, urls) in absolute_url_datasets() {
+        let urls = urls.iter().map(String::as_str).collect::<Vec<_>>();
         c.bench_with_input(BenchmarkId::new("Iri::parse", name), &urls, |b, urls| {
             b.iter(|| {
                 for url in urls {
-                    Iri::parse(black_box(url.as_str())).unwrap();
+                    Iri::parse(black_box(*url)).unwrap();
                 }
             })
         });
@@ -91,13 +111,14 @@ fn iri_parse(c: &mut Criterion) {
         })
     });
     for (name, urls) in absolute_url_datasets() {
+        let urls = urls.iter().map(String::as_str).collect::<Vec<_>>();
         c.bench_with_input(
             BenchmarkId::new("Iri::parse_unchecked", name),
             &urls,
             |b, urls| {
                 b.iter(|| {
                     for url in urls {
-                        Iri::parse_unchecked(black_box(url.as_str()));
+                        Iri::parse_unchecked(black_box(*url));
                     }
                 })
             },
@@ -114,10 +135,21 @@ fn iri_parse_relative(c: &mut Criterion) {
         })
     });
     for (name, urls) in absolute_url_datasets() {
+        let urls = urls.iter().map(String::as_str).collect::<Vec<_>>();
         c.bench_with_input(BenchmarkId::new("IriRef::parse", name), &urls, |b, urls| {
             b.iter(|| {
                 for url in urls {
-                    IriRef::parse(black_box(url.as_str())).unwrap();
+                    IriRef::parse(black_box(*url)).unwrap();
+                }
+            })
+        });
+    }
+    for (name, urls) in relative_url_datasets() {
+        let urls = urls.iter().map(|(_, url)| url.as_str()).collect::<Vec<_>>();
+        c.bench_with_input(BenchmarkId::new("IriRef::parse", name), &urls, |b, urls| {
+            b.iter(|| {
+                for url in urls {
+                    IriRef::parse(black_box(*url)).unwrap();
                 }
             })
         });
@@ -130,13 +162,28 @@ fn iri_parse_relative(c: &mut Criterion) {
         })
     });
     for (name, urls) in absolute_url_datasets() {
+        let urls = urls.iter().map(String::as_str).collect::<Vec<_>>();
         c.bench_with_input(
             BenchmarkId::new("IriRef::parse_unchecked", name),
             &urls,
             |b, urls| {
                 b.iter(|| {
                     for url in urls {
-                        IriRef::parse_unchecked(black_box(url.as_str()));
+                        IriRef::parse_unchecked(black_box(*url));
+                    }
+                })
+            },
+        );
+    }
+    for (name, urls) in relative_url_datasets() {
+        let urls = urls.iter().map(|(_, url)| url.as_str()).collect::<Vec<_>>();
+        c.bench_with_input(
+            BenchmarkId::new("IriRef::parse_unchecked", name),
+            &urls,
+            |b, urls| {
+                b.iter(|| {
+                    for url in urls {
+                        IriRef::parse_unchecked(black_box(*url));
                     }
                 })
             },
@@ -204,6 +251,26 @@ fn iri_resolve(c: &mut Criterion) {
             }
         })
     });
+    for (name, urls) in relative_url_datasets() {
+        let urls = urls
+            .iter()
+            .map(|(base, relative)| (Iri::parse_unchecked(base.as_str()), relative.as_str()))
+            .collect::<Vec<_>>();
+
+        c.bench_with_input(
+            BenchmarkId::new("Iri::resolve_into", name),
+            &urls,
+            |b, urls| {
+                b.iter(|| {
+                    for (base, relative) in urls {
+                        buf.clear();
+                        base.resolve_into(&IriRef::parse(black_box(*relative)).unwrap(), &mut buf)
+                            .unwrap();
+                    }
+                })
+            },
+        );
+    }
     c.bench_function("Iri::resolve_into_unchecked", |b| {
         b.iter(|| {
             for relative in examples.iter() {
@@ -215,6 +282,27 @@ fn iri_resolve(c: &mut Criterion) {
             }
         })
     });
+    for (name, urls) in relative_url_datasets() {
+        let urls = urls
+            .iter()
+            .map(|(base, relative)| (Iri::parse_unchecked(base.as_str()), relative.as_str()))
+            .collect::<Vec<_>>();
+        c.bench_with_input(
+            BenchmarkId::new("Iri::resolve_into_unchecked", name),
+            &urls,
+            |b, urls| {
+                b.iter(|| {
+                    for (base, relative) in urls {
+                        buf.clear();
+                        base.resolve_into_unchecked(
+                            &IriRef::parse_unchecked(black_box(*relative)),
+                            &mut buf,
+                        );
+                    }
+                })
+            },
+        );
+    }
 }
 
 fn iri_relativize(c: &mut Criterion) {
@@ -275,6 +363,27 @@ fn iri_relativize(c: &mut Criterion) {
             }
         })
     });
+    for (name, urls) in relative_url_datasets() {
+        let urls = urls
+            .iter()
+            .map(|(base, relative)| {
+                let base = Iri::parse_unchecked(base.as_str());
+                let resolved = base.resolve_unchecked(&IriRef::parse_unchecked(relative.as_str()));
+                (base, resolved)
+            })
+            .collect::<Vec<_>>();
+        c.bench_with_input(
+            BenchmarkId::new("Iri::relativize", name),
+            &urls,
+            |b, urls| {
+                b.iter(|| {
+                    for (base, resolved) in urls {
+                        base.relativize(resolved).unwrap();
+                    }
+                })
+            },
+        );
+    }
 }
 
 criterion_group!(

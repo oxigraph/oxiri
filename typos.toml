@@ -1,0 +1,2 @@
+[files]
+extend-exclude = ["benches/relative_urls_cc_10k.csv", "benches/url-various-datasets"]
