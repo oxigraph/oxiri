@@ -1903,7 +1903,7 @@ fn write_path_without_dot_segments_to(
 ) {
     if output_path_start == 0
         && !output.bytes().next().map_or_else(
-            || with_prefix_slash || input.bytes().next() == Some(b'/'),
+            || with_prefix_slash || input.starts_with('/'),
             |c| c == b'/',
         )
         || !has_dot_segment(input)
