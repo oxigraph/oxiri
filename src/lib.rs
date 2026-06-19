@@ -1645,7 +1645,6 @@ fn validate_code_point_or_echar(
     Ok(())
 }
 
-#[inline]
 const fn set_alpha(allowed: &mut [bool; 256]) {
     let mut i = b'a';
     while i <= b'z' {
@@ -1659,7 +1658,6 @@ const fn set_alpha(allowed: &mut [bool; 256]) {
     }
 }
 
-#[inline]
 const fn set_digit(allowed: &mut [bool; 256]) {
     let mut i = b'0';
     while i <= b'9' {
@@ -1668,7 +1666,6 @@ const fn set_digit(allowed: &mut [bool; 256]) {
     }
 }
 
-#[inline]
 const fn set_unreserved(allowed: &mut [bool; 256]) {
     set_alpha(allowed);
     set_digit(allowed);
@@ -1678,7 +1675,6 @@ const fn set_unreserved(allowed: &mut [bool; 256]) {
     allowed[b'~' as usize] = true;
 }
 
-#[inline]
 const fn set_sub_delims(allowed: &mut [bool; 256]) {
     allowed[b'!' as usize] = true;
     allowed[b'$' as usize] = true;
@@ -1693,7 +1689,6 @@ const fn set_sub_delims(allowed: &mut [bool; 256]) {
     allowed[b'=' as usize] = true;
 }
 
-#[inline]
 const fn set_pchar(allowed: &mut [bool; 256]) {
     set_unreserved(allowed);
     set_sub_delims(allowed);
@@ -1725,6 +1720,7 @@ fn is_ucschar(c: char) -> bool {
 }
 
 /// Implement relative resolution transform: https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.2
+#[inline(always)]
 fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     base: &IriRef<T1>,
     relative: &IriRef<T2>,
