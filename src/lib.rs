@@ -1286,7 +1286,10 @@ struct IriElementsPositions {
 #[inline]
 fn find_iri_positions(iri: &str) -> IriElementsPositions {
     let iri = iri.as_bytes();
-    let scheme_end = memchr(b':', iri).map_or(0, |l| l + 1);
+    let scheme_end = iri
+        .iter()
+        .position(|c| *c == b':')
+        .map_or(0, |position| position + 1);
     find_iri_positions_knowing_scheme_end(iri, scheme_end)
 }
 
