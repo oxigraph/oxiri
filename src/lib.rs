@@ -1808,24 +1808,82 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                     + 1,
             );
             output_buffer.push_str(&base.iri[..base.positions.authority_end]);
-            write_path_without_dot_segments_to(
-                &base.path()[..last_slash_position + 1],
-                output_buffer,
-                base.positions.authority_end,
-                false,
-            );
-            let with_prefix_slash = if output_buffer.ends_with('/') {
-                output_buffer.pop();
-                true
+            let base_path = base.path();
+            let base_path_prefix = &base_path[..last_slash_position + 1];
+            let relative_path = relative.path();
+            let relative_has_dot_segment = has_dot_segment(relative_path);
+            if !relative_has_dot_segment && !has_dot_segment(base_path_prefix) {
+                output_buffer.push_str(base_path_prefix);
+                output_buffer.push_str(relative_path);
             } else {
-                false
-            };
-            write_path_without_dot_segments_to(
-                relative.path(),
-                output_buffer,
-                base.positions.authority_end,
-                with_prefix_slash,
-            );
+                write_path_without_dot_segments_to(
+                    base_path_prefix,
+                    output_buffer,
+                    base.positions.authority_end,
+                    false,
+                );
+                let with_prefix_slash = if output_buffer.ends_with('/') {
+                    output_buffer.pop();
+                    true
+                } else {
+                    false
+                };
+                if !relative_has_dot_segment {
+                    if with_prefix_slash {
+                        output_buffer.push('/');
+                    }
+                    output_buffer.push_str(relative_path);
+                } else {
+                    let mut input = relative_path;
+                    if with_prefix_slash {
+                        if input.starts_with("./") {
+                            input = &input[1..];
+                        } else if input == "." {
+                            input = "/";
+                        } else if input.starts_with("../") {
+                            input = &input[2..];
+                            remove_last_segment(output_buffer, base.positions.authority_end);
+                        } else if input == ".." {
+                            input = "/";
+                            remove_last_segment(output_buffer, base.positions.authority_end);
+                        } else {
+                            output_buffer.push('/');
+                            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
+                            output_buffer.push_str(&input[..slash_index]);
+                            input = &input[slash_index..];
+                        }
+                    }
+                    while !input.is_empty() {
+                        if let Some(rest) = input.strip_prefix("../") {
+                            input = rest;
+                        } else if let Some(rest) = input.strip_prefix("./") {
+                            input = rest;
+                        } else if input.starts_with("/./") {
+                            input = &input[2..];
+                        } else if input == "/." {
+                            input = "/";
+                        } else if input.starts_with("/../") {
+                            input = &input[3..];
+                            remove_last_segment(output_buffer, base.positions.authority_end);
+                        } else if input == "/.." {
+                            input = "/";
+                            remove_last_segment(output_buffer, base.positions.authority_end);
+                        } else if input == "." || input == ".." {
+                            input = "";
+                        } else {
+                            input = if let Some(rest) = input.strip_prefix('/') {
+                                output_buffer.push('/');
+                                rest
+                            } else {
+                                input
+                            };
+                            let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
+                            output_buffer.push_str(&input[..slash_index]);
+                            input = &input[slash_index..];
+                        }
+                    }
+                }
+            }
         } else {
             if base.positions.authority_end == 0
                 && (relative.path().split('/').any(|c| c == "..") || base.path() == "..")
