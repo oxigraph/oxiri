@@ -1341,24 +1341,56 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
         Some(b'h') if iri.starts_with(b"http:") => find_iri_positions_knowing_scheme_end(iri, 5),
         Some(b'h') if iri.starts_with(b"https:") => find_iri_positions_knowing_scheme_end(iri, 6),
         _ => {
-            // let's guess if we start with a scheme or a path
-            // for that we need to find the first character that is ':', '?', '/' or '#' and see if it's ':'
-            let scheme_end = find_scheme_end_for_iri_ref(iri);
-            find_iri_positions_knowing_scheme_end(iri, scheme_end)
+            for (index, c) in iri.iter().copied().enumerate() {
+                match c {
+                    b':' => return find_iri_positions_knowing_scheme_end(iri, index + 1),
+                    b'?' => {
+                        let query_end = memchr(b'#', &iri[index + 1..])
+                            .map_or(iri.len(), |position| index + 1 + position);
+                        return IriElementsPositions {
+                            scheme_end: 0,
+                            authority_end: 0,
+                            path_end: index,
+                            query_end,
+                        };
+                    }
+                    b'#' => {
+                        return IriElementsPositions {
+                            scheme_end: 0,
+                            authority_end: 0,
+                            path_end: index,
+                            query_end: index,
+                        };
+                    }
+                    b'/' => {
+                        let path_end = memchr2(b'?', b'#', &iri[index + 1..])
+                            .map_or(iri.len(), |position| index + 1 + position);
+                        let query_end = memchr(b'#', &iri[path_end..])
+                            .map_or(iri.len(), |position| path_end + position);
+                        let authority_end = if index == 0 && iri.get(1) == Some(&b'/') {
+                            memchr(b'/', &iri[2..path_end])
+                                .map_or(path_end, |position| position + 2)
+                        } else {
+                            0
+                        };
+                        return IriElementsPositions {
+                            scheme_end: 0,
+                            authority_end,
+                            path_end,
+                            query_end,
+                        };
+                    }
+                    _ => (),
+                }
+            }
+            IriElementsPositions {
+                scheme_end: 0,
+                authority_end: 0,
+                path_end: iri.len(),
+                query_end: iri.len(),
+            }
         }
     }
-}
-
-#[inline]
-fn find_scheme_end_for_iri_ref(iri: &[u8]) -> usize {
-    for (index, c) in iri.iter().copied().enumerate() {
-        match c {
-            b':' => return index + 1,
-            b'?' | b'/' | b'#' => return 0,
-            _ => (),
-        }
-    }
-    0
 }
 
 #[inline]
@@ -1628,6 +1660,9 @@ fn validate_code_point_or_echar(
     ascii_validator: [bool; 256],
     is_valid: impl Fn(char) -> bool,
 ) -> Result<(), IriParseError> {
+    if input.bytes().all(|c| ascii_validator[usize::from(c)]) {
+        return Ok(());
+    }
     let bytes = input.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
