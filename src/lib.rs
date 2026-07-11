@@ -1338,6 +1338,8 @@ fn find_iri_ref_positions(iri: &str) -> IriElementsPositions {
                 query_end: 0,
             }
         }
+        Some(b'h') if iri.starts_with(b"http:") => find_iri_positions_knowing_scheme_end(iri, 5),
+        Some(b'h') if iri.starts_with(b"https:") => find_iri_positions_knowing_scheme_end(iri, 6),
         _ => {
             // let's guess if we start with a scheme or a path
             // for that we need to find the first character that is ':', '?', '/' or '#' and see if it's ':'
