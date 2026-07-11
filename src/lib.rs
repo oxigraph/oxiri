@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr3, memchr_iter, memrchr};
+use memchr::{memchr, memchr2, memchr_iter, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
