@@ -1295,8 +1295,18 @@ fn find_iri_positions(iri: &str) -> IriElementsPositions {
 
 #[inline]
 fn find_iri_positions_knowing_scheme_end(iri: &[u8], scheme_end: usize) -> IriElementsPositions {
-    let path_end = memchr2(b'?', b'#', &iri[scheme_end..]).map_or(iri.len(), |l| scheme_end + l);
-    let query_end = memchr(b'#', &iri[path_end..]).map_or(iri.len(), |l| path_end + l);
+    let (path_end, query_end) = match iri.get(scheme_end).copied() {
+        Some(b'?') => {
+            let query_end = memchr(b'#', &iri[scheme_end..]).map_or(iri.len(), |l| scheme_end + l);
+            (scheme_end, query_end)
+        },
+        Some(b'#') | None => (scheme_end, scheme_end),
+        Some(_) => {
+            let path_end = memchr2(b'?', b'#', &iri[scheme_end..]).map_or(iri.len(), |l| scheme_end + l);
+            let query_end = memchr(b'#', &iri[path_end..]).map_or(iri.len(), |l| path_end + l);
+            (path_end, query_end)
+        },
+    };
     let authority_end =
         if scheme_end + 2 <= path_end && iri[scheme_end] == b'/' && iri[scheme_end + 1] == b'/' {
             memchr(b'/', &iri[scheme_end + 2..path_end]).map_or(path_end, |l| scheme_end + 2 + l)
