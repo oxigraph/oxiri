@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
-use memchr::{memchr, memchr2, memchr_iter, memrchr};
+use memchr::{memchr, memchr2, memchr3, memchr_iter, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -1389,7 +1389,12 @@ fn validate_iri<T: Deref<Target = str>>(iri: &Iri<T>) -> Result<(), IriParseErro
 #[inline]
 fn validate_iri_ref<T: Deref<Target = str>>(iri: &IriRef<T>) -> Result<(), IriParseError> {
     if iri.positions.scheme_end > 0 {
-        validate_scheme(&iri.iri[..iri.positions.scheme_end - 1])?;
+        let iri_bytes = iri.iri.as_bytes();
+        if !((iri.positions.scheme_end == 5 && iri_bytes.starts_with(b"http:"))
+            || (iri.positions.scheme_end == 6 && iri_bytes.starts_with(b"https:")))
+        {
+            validate_scheme(&iri.iri[..iri.positions.scheme_end - 1])?;
+        }
     }
     if iri.positions.authority_end > iri.positions.scheme_end {
         validate_authority(&iri.iri[iri.positions.scheme_end + 2..iri.positions.authority_end])?;
