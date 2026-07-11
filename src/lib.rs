@@ -1453,6 +1453,12 @@ fn validate_authority(authority: &str) -> Result<(), IriParseError> {
     };
 
     let mut remaining_authority = authority;
+    if remaining_authority
+        .bytes()
+        .all(|c| UNRESERVED_SUB_DELIMS[usize::from(c)])
+    {
+        return Ok(()); // All bytes are ok
+    };
     if let Some(username_index) = memchr(b'@', remaining_authority.as_bytes()) {
         let username = &remaining_authority[..username_index];
         remaining_authority = &remaining_authority[username_index + 1..];
