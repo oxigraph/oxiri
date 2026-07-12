@@ -1621,6 +1621,9 @@ fn validate_code_point_or_echar(
     ascii_validator: [bool; 256],
     is_valid: impl Fn(char) -> bool,
 ) -> Result<(), IriParseError> {
+    if input.bytes().all(|c| ascii_validator[usize::from(c)]) {
+        return Ok(());
+    }
     let bytes = input.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
