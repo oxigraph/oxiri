@@ -1,10 +1,25 @@
 # Changelog
 
+## [0.3.0] - 2026-07-19
+
+### Added
+- `OutputBuffer` trait that allows to use `resolve_into` methods on types that are not `String`.
+
+### Changed
+
+- All `resolve` methods take an `IriRef` for input, decoupling validation and resolution.
+- `resolve` methods now fully follows RFC 3986 dot segments removal algorithm.
+  This includes removing dot segments from absolute IRIs.
+  To keep the previous behavior do not call `resolve` on absolute IRIs.
+- Parsing performance improvements. `parse_unchecked` is 3x faster and `parse` 2x faster on our benchmarks.
+
+
 ## [0.2.11] - 2025-01-19
 
 ### Changed
 
 - Resolve: do not remove dot segment if a scheme or an authority is present for consistency with parse.
+
 
 ## [0.2.10] - 2025-01-17
 
@@ -13,11 +28,13 @@
 - Resolve: properly normalize relative paths starting with `.` or `..`.
 - Relativize: make use of `.` and do not always use absolute path if there is a candidate relative path containing `/`.
 
+
 ## [0.2.9] - 2024-12-21
 
 ### Changed
 
 - Relativize: avoid panic in case of shared UTF-8 prefix.
+
 
 ## [0.2.8] - 2024-10-19
 
@@ -25,11 +42,13 @@
 
 - Fixes relativize on IRIs with a scheme and nothing else.
 
+
 ## [0.2.7] - 2024-10-19
 
 ### Changed
 
 - Fixes relative IRI resolution when there is no authority but a path starting with "/".
+
 
 ## [0.2.6] - 2024-10-18
 
@@ -37,11 +56,13 @@
 
 - Fixes relativize on hierarchical paths without authority and starting slash.
 
+
 ## [0.2.5] - 2024-10-03
 
 ### Added
 
 - `Iri::relativize` to build a relative IRI from a base IRI and an absolute IRI.
+
 
 ## [0.2.4] - 2024-08-20
 
@@ -50,11 +71,13 @@
 - Makes IRI parsing a bit more strict to follow RFC 3987 more closely.
 - Allow IP vFuture in authority.
 
+
 ## [0.2.3] - 2024-03-23
 
 ### Added
 
 - `_unchecked` methods for faster parsing/resolving if the IRI is known to be valid.
+
 
 ## [0.2.2] - 2022-03-27
 
@@ -62,6 +85,7 @@
 
 - `Iri` and `IriRef` now implement Serde `Serialize` and `Deserialize` traits if the `serde` crate is present.
   The serialization is a plain string.
+
 
 ## [0.2.1] - 2021-01-10
 
@@ -73,6 +97,7 @@
     - Some private use characters are not anymore allowed in path and fragment.
     - Some surrogates are not allowed anymore in query.
     - The range F900-FDEF is now allowed in path and fragment following the RFC.
+
 
 ## [0.2.0] - 2021-01-06
 
@@ -88,6 +113,7 @@
 - `iprivate` characters (`%xE000-F8FF / %xF0000-FFFFD / %x100000-10FFFD`) are not allowed anymore as part of the IRI
   query component following RFC 3987.
 
+
 ## [0.1.1] - 2020-07-10
 
 ### Added
@@ -100,6 +126,7 @@
 ### Changed
 
 - Bug fix in the relative IRI resolution: some character were duplicated.
+
 
 ## [0.1.0] - 2020-05-01
 
