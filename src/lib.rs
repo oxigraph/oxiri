@@ -120,7 +120,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// Validates and resolved a relative IRI against the current IRI
     /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
-    /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
+    /// It outputs the resolved IRI into `output_buffer` to avoid any memory allocation.
     ///
     /// Use [`resolve_into_unchecked`](Self::resolve_into_unchecked) if you already know the IRI is valid to get faster processing.
     ///
@@ -128,7 +128,7 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// use oxiri::IriRef;
     ///
     /// let base_iri = IriRef::parse("//foo.com/bar/baz")?;
-    /// let mut result = String::default();
+    /// let mut result = String::new();
     /// let iri = base_iri.resolve_into(&IriRef::parse("bat#foo")?, &mut result)?;
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// # Result::<(), oxiri::IriParseError>::Ok(())
@@ -136,9 +136,9 @@ impl<T: Deref<Target = str>> IriRef<T> {
     pub fn resolve_into<T2: Deref<Target = str>>(
         &self,
         reference: &IriRef<T2>,
-        target_buffer: &mut String,
+        output_buffer: &mut impl OutputBuffer,
     ) -> Result<(), IriParseError> {
-        let (_, error) = resolve(self, reference, target_buffer);
+        let (_, error) = resolve(self, reference, output_buffer);
         if let Some(error) = error {
             return Err(error.into());
         }
@@ -151,16 +151,16 @@ impl<T: Deref<Target = str>> IriRef<T> {
     /// use oxiri::IriRef;
     ///
     /// let base_iri = IriRef::parse_unchecked("//foo.com/bar/baz");
-    /// let mut result = String::default();
+    /// let mut result = String::new();
     /// let iri = base_iri.resolve_into_unchecked(&IriRef::parse_unchecked("bat#foo"), &mut result);
     /// assert_eq!(result, "//foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into_unchecked<T2: Deref<Target = str>>(
         &self,
         reference: &IriRef<T2>,
-        target_buffer: &mut String,
+        output_buffer: &mut impl OutputBuffer,
     ) {
-        resolve(self, reference, target_buffer);
+        resolve(self, reference, output_buffer);
     }
 
     /// Returns an `IriRef` borrowing this IRI's text.
@@ -624,7 +624,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// Validates and resolved a relative IRI against the current IRI
     /// following [RFC 3986](https://www.ietf.org/rfc/rfc3986.html) relative URI resolution algorithm.
     ///
-    /// It outputs the resolved IRI into `target_buffer` to avoid any memory allocation.
+    /// It outputs the resolved IRI into `output_buffer` to avoid any memory allocation.
     ///
     /// Use [`resolve_into_unchecked`](Self::resolve_into_unchecked) if you already know the IRI is valid to get faster processing.
     ///
@@ -632,7 +632,7 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// use oxiri::{Iri, IriRef};
     ///
     /// let base_iri = Iri::parse("http://foo.com/bar/baz")?;
-    /// let mut result = String::default();
+    /// let mut result = String::new();
     /// let iri = base_iri.resolve_into(&IriRef::parse("bat#foo")?, &mut result)?;
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// # Result::<(), oxiri::IriParseError>::Ok(())
@@ -640,9 +640,9 @@ impl<T: Deref<Target = str>> Iri<T> {
     pub fn resolve_into<T2: Deref<Target = str>>(
         &self,
         reference: &IriRef<T2>,
-        target_buffer: &mut String,
+        output_buffer: &mut impl OutputBuffer,
     ) -> Result<(), IriParseError> {
-        self.0.resolve_into(reference, target_buffer)
+        self.0.resolve_into(reference, output_buffer)
     }
 
     /// Variant of [`resolve_into`](Self::resolve_into) that assumes that the IRI is valid to skip validation.
@@ -651,16 +651,16 @@ impl<T: Deref<Target = str>> Iri<T> {
     /// use oxiri::{Iri, IriRef};
     ///
     /// let base_iri = Iri::parse_unchecked("http://foo.com/bar/baz");
-    /// let mut result = String::default();
+    /// let mut result = String::new();
     /// let iri = base_iri.resolve_into_unchecked(&IriRef::parse_unchecked("bat#foo"), &mut result);
     /// assert_eq!(result, "http://foo.com/bar/bat#foo");
     /// ```
     pub fn resolve_into_unchecked<T2: Deref<Target = str>>(
         &self,
         reference: &IriRef<T2>,
-        target_buffer: &mut String,
+        output_buffer: &mut impl OutputBuffer,
     ) {
-        self.0.resolve_into_unchecked(reference, target_buffer)
+        self.0.resolve_into_unchecked(reference, output_buffer)
     }
 
     /// Returns an IRI that, when resolved against the current IRI returns `abs`.
@@ -1728,12 +1728,44 @@ fn is_ucschar(c: char) -> bool {
         | '\u{E1000}'..='\u{EFFFD}')
 }
 
+/// The buffer used as the output of [`Iri::resolve_into`] and [`IriRef::resolve_into`].
+///
+/// All its methods have the same semantic as [`String`]
+pub trait OutputBuffer {
+    fn as_str(&self) -> &str;
+    fn push_str(&mut self, s: &str);
+    fn reserve_exact(&mut self, additional: usize);
+    fn truncate(&mut self, len: usize);
+}
+
+impl OutputBuffer for String {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+
+    #[inline]
+    fn push_str(&mut self, s: &str) {
+        self.push_str(s);
+    }
+
+    #[inline]
+    fn reserve_exact(&mut self, additional: usize) {
+        self.reserve_exact(additional);
+    }
+
+    #[inline]
+    fn truncate(&mut self, new_len: usize) {
+        self.truncate(new_len);
+    }
+}
+
 /// Implement relative resolution transform: https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.2
 #[inline(always)]
 fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     base: &IriRef<T1>,
     relative: &IriRef<T2>,
-    output_buffer: &mut String,
+    output_buffer: &mut impl OutputBuffer,
 ) -> (IriElementsPositions, Option<IriParseErrorKind>) {
     let mut error = None;
     let positions = if relative.is_absolute() {
@@ -1745,7 +1777,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             relative.positions.authority_end,
             false,
         );
-        let path_end = output_buffer.len();
+        let path_end = output_buffer.as_str().len();
         output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
         IriElementsPositions {
             scheme_end: relative.positions.scheme_end,
@@ -1763,7 +1795,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             base.positions.scheme_end + relative.positions.authority_end,
             false,
         );
-        let path_end = output_buffer.len();
+        let path_end = output_buffer.as_str().len();
         output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
@@ -1814,8 +1846,8 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                 base.positions.authority_end,
                 false,
             );
-            let with_prefix_slash = if output_buffer.ends_with('/') {
-                output_buffer.pop();
+            let with_prefix_slash = if output_buffer.as_str().ends_with('/') {
+                output_buffer.truncate(output_buffer.as_str().len() - 1);
                 true
             } else {
                 false
@@ -1845,7 +1877,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
                 false,
             );
         }
-        let path_end = output_buffer.len();
+        let path_end = output_buffer.as_str().len();
         output_buffer.push_str(&relative.iri[relative.positions.path_end..]);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
@@ -1862,7 +1894,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             base.positions.authority_end,
             false,
         );
-        let path_end = output_buffer.len();
+        let path_end = output_buffer.as_str().len();
         output_buffer.push_str(&relative.iri);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
@@ -1879,7 +1911,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
             base.positions.authority_end,
             false,
         );
-        let path_end = output_buffer.len();
+        let path_end = output_buffer.as_str().len();
         output_buffer.push_str(&base.iri[base.positions.path_end..base.positions.query_end]);
         output_buffer.push_str(&relative.iri);
         IriElementsPositions {
@@ -1891,7 +1923,7 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
     };
     // We validate that we have not converted a path into an authority
     if positions.scheme_end == positions.authority_end
-        && output_buffer[positions.authority_end..].starts_with("//")
+        && output_buffer.as_str()[positions.authority_end..].starts_with("//")
     {
         error = Some(IriParseErrorKind::PathStartingWithTwoSlashes);
     }
@@ -1902,12 +1934,12 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
 #[inline]
 fn write_path_without_dot_segments_to(
     mut input: &str,
-    output: &mut String,
+    output: &mut impl OutputBuffer,
     output_path_start: usize,
     with_prefix_slash: bool,
 ) {
     if output_path_start == 0
-        && !output.bytes().next().map_or_else(
+        && !output.as_str().bytes().next().map_or_else(
             || with_prefix_slash || input.starts_with('/'),
             |c| c == b'/',
         )
@@ -1915,7 +1947,7 @@ fn write_path_without_dot_segments_to(
     {
         // We are resolving against a relative path, we don't try to remove dot segments
         if with_prefix_slash {
-            output.push('/');
+            output.push_str("/");
         }
         output.push_str(input);
         return;
@@ -1932,7 +1964,7 @@ fn write_path_without_dot_segments_to(
             input = "/";
             remove_last_segment(output, output_path_start);
         } else {
-            output.push('/');
+            output.push_str("/");
             let slash_index = memchr(b'/', input.as_bytes()).unwrap_or(input.len());
             output.push_str(&input[..slash_index]);
             input = &input[slash_index..];
@@ -1957,7 +1989,7 @@ fn write_path_without_dot_segments_to(
             input = "";
         } else {
             input = if let Some(rest) = input.strip_prefix('/') {
-                output.push('/');
+                output.push_str("/");
                 rest
             } else {
                 input
@@ -1970,7 +2002,8 @@ fn write_path_without_dot_segments_to(
 }
 
 #[inline]
-fn remove_last_segment(output: &mut String, output_path_start: usize) {
-    let last_slash_position = memrchr(b'/', &output.as_bytes()[output_path_start..]).unwrap_or(0);
+fn remove_last_segment(output: &mut impl OutputBuffer, output_path_start: usize) {
+    let last_slash_position =
+        memrchr(b'/', &output.as_str().as_bytes()[output_path_start..]).unwrap_or(0);
     output.truncate(output_path_start + last_slash_position);
 }
