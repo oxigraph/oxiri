@@ -1887,39 +1887,19 @@ fn resolve<T1: Deref<Target = str>, T2: Deref<Target = str>>(
         }
     } else if relative.positions.query_end > 0 {
         output_buffer.reserve_exact(base.positions.path_end + relative.iri.len());
-        output_buffer.push_str(&base.iri[..base.positions.authority_end]);
-        write_path_without_dot_segments_to(
-            base.path(),
-            output_buffer,
-            base.positions.authority_end,
-            false,
-        );
-        let path_end = output_buffer.as_str().len();
+        output_buffer.push_str(&base.iri[..base.positions.path_end]);
         output_buffer.push_str(&relative.iri);
         IriElementsPositions {
             scheme_end: base.positions.scheme_end,
             authority_end: base.positions.authority_end,
-            path_end,
-            query_end: path_end + relative.positions.query_end,
+            path_end: base.positions.path_end,
+            query_end: base.positions.path_end + relative.positions.query_end,
         }
     } else {
         output_buffer.reserve_exact(base.positions.query_end + relative.iri.len());
-        output_buffer.push_str(&base.iri[..base.positions.authority_end]);
-        write_path_without_dot_segments_to(
-            base.path(),
-            output_buffer,
-            base.positions.authority_end,
-            false,
-        );
-        let path_end = output_buffer.as_str().len();
-        output_buffer.push_str(&base.iri[base.positions.path_end..base.positions.query_end]);
+        output_buffer.push_str(&base.iri[..base.positions.query_end]);
         output_buffer.push_str(&relative.iri);
-        IriElementsPositions {
-            scheme_end: base.positions.scheme_end,
-            authority_end: base.positions.authority_end,
-            path_end,
-            query_end: path_end + (base.positions.query_end - base.positions.path_end),
-        }
+        base.positions
     };
     // We validate that we have not converted a path into an authority
     if positions.scheme_end == positions.authority_end
