@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1] - 2026-07-25
+
+### Changed
+
+- `resolve` methods now properly follows RFC 3986 dot segments removal algorithm,
+  and do not remove dot segments from the base if the relative IRI is only composed of a query and/or a fragment.
+
+
 ## [0.3.0] - 2026-07-19
 
 ### Added
