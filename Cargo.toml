@@ -13,9 +13,13 @@ Simple and fast implementation of IRI validation and relative IRI resolution
 edition = "2021"
 rust-version = "1.83"
 
+[features]
+default = ["std"]
+std = ["memchr/std", "serde?/std"]
+
 [dependencies]
-memchr = "2.3"
-serde = { version = "1.0.217", optional = true }
+memchr = { version = "2.3", default-features = false }
+serde = { version = "1.0.217", optional = true, default-features = false }
 
 [dev-dependencies]
 codspeed-criterion-compat = ">=4.0.1, <7"

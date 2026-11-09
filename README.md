@@ -30,6 +30,8 @@ assert_eq!(iri.fragment(), Some("foo"));
 
 If [`serde`](https://serde.rs/) is available, `Iri` and `IriRef` implement the `Serialize` and `Deserialize` traits and encode the IRI as a string.
 
+The `std` feature is enabled by default. Disabling it with `--no-default-features` makes the crate [`no_std`](https://doc.rust-lang.org/reference/names/preludes.html#the-no_std-attribute) compatible, still relying on the `alloc` crate.
+
 
 ## License
 
