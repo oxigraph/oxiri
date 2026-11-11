@@ -30,6 +30,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --all-targets -- -D warnings -D clippy::all
       - run: cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
+      - run: cargo clippy --no-default-features -- -D warnings -D clippy::all
 
   test:
     runs-on: ubuntu-latest
@@ -41,6 +42,7 @@ jobs:
       - run: cargo build --all-features
       - run: cargo test --verbose
       - run: cargo test --verbose --all-features
+      - run: cargo test --verbose --no-default-features
 
   test_msv:
     runs-on: ubuntu-latest
@@ -111,7 +113,7 @@ jobs:
       - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: cargo-codspeed }
       - run: cargo codspeed build
-      - uses: CodSpeedHQ/action@78102a468f96d8e0ccb92d0ec49425753fc42062 # v5.6.0
+      - uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
         with:
           run: cargo codspeed run
           mode: simulation

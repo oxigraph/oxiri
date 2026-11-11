@@ -1,19 +1,33 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::{
+    borrow::{Cow, ToOwned},
+    boxed::Box,
+    string::{String, ToString},
+};
+
+#[cfg(feature = "std")]
+use std::borrow::Cow;
+
+use core::borrow::Borrow;
+use core::cmp::Ordering;
+use core::convert::TryFrom;
+use core::error::Error;
+use core::fmt;
+use core::hash::{Hash, Hasher};
+use core::net::{AddrParseError, Ipv6Addr};
+use core::ops::Deref;
+use core::str::FromStr;
 use memchr::{memchr, memchr2, memchr_iter, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::borrow::{Borrow, Cow};
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::net::{AddrParseError, Ipv6Addr};
-use std::ops::Deref;
-use std::str::FromStr;
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI reference.
 ///

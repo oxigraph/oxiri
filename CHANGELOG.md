@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `#[no_std]` compatibility with `std` feature flag (still requiring `alloc`), enabled by default.
+
+
 ## [0.3.1] - 2026-07-25
 
 ### Changed
