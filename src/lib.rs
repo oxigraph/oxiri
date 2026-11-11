@@ -12,10 +12,6 @@ use alloc::{
     boxed::Box,
     string::{String, ToString},
 };
-
-#[cfg(feature = "std")]
-use std::borrow::Cow;
-
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::convert::TryFrom;
@@ -28,6 +24,8 @@ use core::str::FromStr;
 use memchr::{memchr, memchr2, memchr_iter, memrchr};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "std")]
+use std::borrow::Cow;
 
 /// A [RFC 3987](https://www.ietf.org/rfc/rfc3987.html) IRI reference.
 ///

@@ -22,7 +22,7 @@ memchr = { version = "2.3", default-features = false }
 serde = { version = "1.0.217", optional = true, default-features = false }
 
 [dev-dependencies]
-codspeed-criterion-compat = ">=4.0.1, <7"
+codspeed-criterion-compat = ">=4.4.1, <7"
 serde_test = "1"
 
 [[bench]]
